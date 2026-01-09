@@ -456,6 +456,15 @@ function createItemCard(item) {
                     ${item.comment ? `<div class="card-comment">${item.comment}</div>` : ''}
                 </div>`;
         }
+        
+        // Make entire card clickable for links
+        card.style.cursor = 'pointer';
+        card.onclick = (e) => {
+            // Don't navigate if selecting text
+            if (window.getSelection().toString().length > 0) return;
+            window.open(item.content, '_blank');
+        };
+
     } else { // note
         card.classList.add('card-note');
         if (item.color) {
