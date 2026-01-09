@@ -133,8 +133,8 @@ main#app {
 /* Grids */
 .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 1.25rem;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
     align-items: start;
 }
 
@@ -326,12 +326,12 @@ button {
 
 /* Topic Cards specific */
 .topic-card {
-    height: 250px; /* Match typical card height better for masonry mixing */
+    height: 200px; /* Match typical card height better for masonry mixing */
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
-    font-size: 1.5rem;
+    font-size: 1.2rem;
     font-weight: bold;
     color: white;
     background: var(--accent-color);
