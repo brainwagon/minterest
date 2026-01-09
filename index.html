@@ -11,12 +11,24 @@
 
     <header>
         <div class="header-content">
-            <h1 id="app-logo">minterest</h1>
+            <div id="logo-container">
+                <h1 id="app-logo">minterest</h1>
+                <p id="app-subtitle">maintaining minimal interest</p>
+            </div>
             <nav id="nav-controls">
-                <button id="btn-dashboard" class="hidden">← Back to Topics</button>
+                <button id="btn-dashboard" class="hidden">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                    Back to Topics
+                </button>
                 <div class="actions">
-                    <button id="btn-export" title="Backup to File">💾 Export</button>
-                    <button id="btn-import" title="Restore from Backup">📂 Import</button>
+                    <button id="btn-export" title="Backup to File">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        Export
+                    </button>
+                    <button id="btn-import" title="Restore from Backup">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                        Import
+                    </button>
                     <input type="file" id="import-file" accept=".json" style="display: none;">
                 </div>
             </nav>
@@ -28,7 +40,10 @@
         <section id="dashboard-view" class="view">
             <div class="view-header">
                 <h2>My Topics</h2>
-                <button id="btn-add-topic" class="btn-primary">+ New Topic</button>
+                <button id="btn-add-topic" class="btn-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+                    New Topic
+                </button>
             </div>
             <div id="topics-grid" class="grid">
                 <!-- Topics will be rendered here -->
@@ -40,8 +55,15 @@
             <div class="view-header">
                 <h2 id="board-title">Topic Name</h2>
                 <div class="board-actions">
-                    <button id="btn-add-note" class="btn-secondary">+ Add Note</button>
-                    <p class="hint">Tip: Drag & drop links or images here!</p>
+                    <div id="drop-zone" class="drop-zone" title="Click to upload or drag images here">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" style="margin-right:8px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        <span>Drop images here</span>
+                        <input type="file" id="drop-zone-input" accept="image/*" multiple style="display: none;">
+                    </div>
+                    <button id="btn-add-note" class="btn-secondary">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                        Add Note
+                    </button>
                 </div>
             </div>
             <div id="items-grid" class="grid masonry">
@@ -49,6 +71,11 @@
             </div>
         </section>
     </main>
+
+    <footer id="app-footer">
+        <p>Written by Mark VandeWettering, using Gemini CLI</p>
+        <p class="version-info">Version: 2026-01-09 | Storage: <span id="storage-usage">Calculating...</span></p>
+    </footer>
 
     <!-- Dialog for New Topic -->
     <dialog id="dlg-topic">
