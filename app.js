@@ -799,9 +799,12 @@ window.addEventListener('paste', async (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
     const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+    let handled = false;
 
     for (const item of items) {
         if (item.kind === 'file' && item.type.startsWith('image/')) {
+            e.preventDefault();
+            handled = true;
             const file = item.getAsFile();
             const reader = new FileReader();
             reader.readAsDataURL(file);
@@ -809,14 +812,19 @@ window.addEventListener('paste', async (e) => {
                 addItemToTopic('image', reader.result);
             };
         } else if (item.kind === 'string' && item.type === 'text/plain') {
-            item.getAsString((text) => {
+            // Handle Text / URL
+            item.getAsString((rawText) => {
+                const text = rawText.trim();
                 if (text.startsWith('http')) {
+                    if (!handled) { e.preventDefault(); handled = true; } // prevent double paste if multiple items
                     if (text.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i)) {
                         addItemToTopic('image', text);
                     } else {
                         addItemToTopic('link', text);
                     }
-                } else {
+                } else if (text.length > 0) {
+                     // Only treat as note if it's not a URL and not empty
+                     if (!handled) { e.preventDefault(); handled = true; }
                      addItemToTopic('note', text);
                 }
             });
