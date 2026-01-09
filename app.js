@@ -2,6 +2,7 @@ import Sortable from 'https://esm.sh/sortablejs@1.15.0';
 import { openDB, deleteDB } from 'https://esm.sh/idb@7.1.1';
 import Peer from 'https://esm.sh/peerjs@1.5.4?bundle-deps';
 import QRCode from 'https://esm.sh/qrcode@1.5.3';
+import JSZip from 'https://esm.sh/jszip@3.10.1';
 
 // --- Configuration ---
 const DB_NAME = 'minterest-db';
@@ -851,8 +852,65 @@ function handleFiles(files) {
             reader.onloadend = () => {
                 addItemToTopic('image', reader.result);
             };
+        } else if (file.name.endsWith('.zip') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed') {
+            handleZipFile(file);
         }
     }
+}
+
+async function handleZipFile(file) {
+    try {
+        const zip = await JSZip.loadAsync(file);
+        
+        // Convert to array to process concurrently but controlled? 
+        // For simplicity, we just fire and forget loop, or Promise.all if we want to wait (but handleFiles is sync void)
+        // We'll just process them.
+        
+        const promises = [];
+        
+        zip.forEach((relativePath, zipEntry) => {
+            if (zipEntry.dir || zipEntry.name.startsWith('__MACOSX') || zipEntry.name.startsWith('.')) return; 
+            
+            const lowerName = zipEntry.name.toLowerCase();
+            
+            // Image
+            if (lowerName.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i)) {
+                const mime = getMimeType(lowerName);
+                const p = zipEntry.async('base64').then(b64 => {
+                    addItemToTopic('image', `data:${mime};base64,${b64}`);
+                });
+                promises.push(p);
+            } 
+            // Text / Markdown
+            else if (lowerName.endsWith('.txt') || lowerName.endsWith('.md')) {
+                const p = zipEntry.async('string').then(text => {
+                     if (text.trim()) {
+                        addItemToTopic('note', text);
+                     }
+                });
+                promises.push(p);
+            }
+        });
+        
+        await Promise.all(promises);
+        
+    } catch (e) {
+        console.error("Failed to process zip:", e);
+        alert("Error processing zip file: " + e.message);
+    }
+}
+
+function getMimeType(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    const map = {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'gif': 'image/gif',
+        'webp': 'image/webp',
+        'svg': 'image/svg+xml'
+    };
+    return map[ext] || 'application/octet-stream';
 }
 
 function handleDataTransfer(dt) {
@@ -946,15 +1004,23 @@ window.addEventListener('paste', async (e) => {
     let handled = false;
 
     for (const item of items) {
-        if (item.kind === 'file' && item.type.startsWith('image/')) {
-            e.preventDefault();
-            handled = true;
+        if (item.kind === 'file') {
             const file = item.getAsFile();
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onloadend = () => {
-                addItemToTopic('image', reader.result);
-            };
+            if (file) {
+                if (file.type.startsWith('image/')) {
+                    e.preventDefault();
+                    handled = true;
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    reader.onloadend = () => {
+                        addItemToTopic('image', reader.result);
+                    };
+                } else if (file.name.endsWith('.zip') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed') {
+                    e.preventDefault();
+                    handled = true;
+                    handleZipFile(file);
+                }
+            }
         } else if (item.kind === 'string' && item.type === 'text/plain') {
             // Handle Text / URL
             item.getAsString((rawText) => {
