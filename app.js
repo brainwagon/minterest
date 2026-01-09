@@ -80,6 +80,7 @@ async function refreshState() {
 
 // --- Navigation ---
 let currentTopicId = null;
+let editingTopicId = null;
 
 function navigateToDashboard() {
     currentTopicId = null;
@@ -462,6 +463,25 @@ async function addNewTopic(name, color = null, description = '') {
     renderTopics();
 }
 
+async function updateTopic(id, name, color, description) {
+    const tx = db.transaction('topics', 'readwrite');
+    const topic = await tx.store.get(id);
+    if (topic) {
+        topic.name = name;
+        if (color) topic.color = color;
+        topic.description = description;
+        await tx.store.put(topic);
+        await tx.done;
+        await refreshState();
+        // If we are currently viewing this board, update the view
+        if (currentTopicId === id) {
+            document.getElementById('board-title').textContent = name;
+            const descEl = document.getElementById('board-description');
+            if (descEl) descEl.textContent = description;
+        }
+    }
+}
+
 async function deleteTopic(id) {
     // Delete topic and all its items
     const tx = db.transaction(['topics', 'items'], 'readwrite');
@@ -547,7 +567,14 @@ document.getElementById('app-logo').onclick = navigateToDashboard;
 document.getElementById('btn-dashboard').onclick = navigateToDashboard;
 
 const dlgTopic = document.getElementById('dlg-topic');
+const btnConfirmTopic = document.getElementById('btn-confirm-topic');
+
+// Add Topic Button (Dashboard)
 document.getElementById('btn-add-topic').onclick = () => {
+    editingTopicId = null;
+    document.querySelector('#dlg-topic h3').textContent = 'Create New Topic';
+    btnConfirmTopic.textContent = 'Create';
+    
     // Reset form
     document.getElementById('topic-name-input').value = '';
     document.getElementById('topic-desc-input').value = '';
@@ -556,6 +583,31 @@ document.getElementById('btn-add-topic').onclick = () => {
     
     dlgTopic.showModal();
 };
+
+// Edit Topic Button (Board)
+const btnEditTopic = document.getElementById('btn-edit-topic');
+if (btnEditTopic) {
+    btnEditTopic.onclick = () => {
+        if (!currentTopicId) return;
+        const topic = state.topics.find(t => t.id === currentTopicId);
+        if (!topic) return;
+
+        editingTopicId = currentTopicId;
+        document.querySelector('#dlg-topic h3').textContent = 'Edit Topic';
+        btnConfirmTopic.textContent = 'Save Changes';
+
+        document.getElementById('topic-name-input').value = topic.name;
+        document.getElementById('topic-desc-input').value = topic.description || '';
+        
+        // Select color
+        const color = topic.color || '#e60023';
+        const colorInput = document.querySelector(`input[name="topic-color"][value="${color}"]`);
+        if (colorInput) colorInput.checked = true;
+
+        dlgTopic.showModal();
+    };
+}
+
 document.getElementById('btn-cancel-topic').onclick = () => dlgTopic.close();
 dlgTopic.onsubmit = (e) => {
     const input = document.getElementById('topic-name-input');
@@ -566,8 +618,13 @@ dlgTopic.onsubmit = (e) => {
     const colorInput = document.querySelector('input[name="topic-color"]:checked');
     if (colorInput) color = colorInput.value;
 
-    addNewTopic(input.value, color, descInput.value);
+    if (editingTopicId) {
+        updateTopic(editingTopicId, input.value, color, descInput.value);
+    } else {
+        addNewTopic(input.value, color, descInput.value);
+    }
     input.value = '';
+    editingTopicId = null;
 };
 
 // Note Dialog
