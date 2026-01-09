@@ -447,6 +447,57 @@ function createItemCard(item) {
     return card;
 }
 
+// --- Helpers ---
+async function updateStorageUsage() {
+    if ('storage' in navigator && 'estimate' in navigator.storage) {
+        try {
+            const estimate = await navigator.storage.estimate();
+            const usage = estimate.usage; // Bytes
+            let display = '';
+            
+            if (usage < 1024) display = usage + ' B';
+            else if (usage < 1024 * 1024) display = (usage / 1024).toFixed(1) + ' KB';
+            else display = (usage / (1024 * 1024)).toFixed(1) + ' MB';
+            
+            const el = document.getElementById('storage-usage');
+            if (el) el.textContent = display;
+        } catch (e) {
+            console.error('Storage estimate failed', e);
+            const el = document.getElementById('storage-usage');
+            if (el) el.textContent = 'Unknown';
+        }
+    } else {
+        // Fallback for older browsers (approximate)
+        const topics = await db.getAll('topics');
+        const items = await db.getAll('items');
+        const json = JSON.stringify({ topics, items });
+        const bytes = new Blob([json]).size;
+         let display = '';
+        if (bytes < 1024) display = bytes + ' B';
+        else if (bytes < 1024 * 1024) display = (bytes / 1024).toFixed(1) + ' KB';
+        else display = (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        const el = document.getElementById('storage-usage');
+        if (el) el.textContent = '~' + display;
+    }
+}
+
+function getCardColor(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+    return '#' + '00000'.substring(0, 6 - c.length) + c;
+}
+
+function getPastelColor(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const hue = Math.abs(hash % 360);
+    return `hsl(${hue}, 70%, 90%)`;
+}
 
 // --- Actions (Async) ---
 function getNextOrder(parentId) {
