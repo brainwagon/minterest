@@ -1,5 +1,5 @@
 import Sortable from 'https://esm.sh/sortablejs@1.15.0';
-import { openDB } from 'https://esm.sh/idb@7.1.1';
+import { openDB, deleteDB } from 'https://esm.sh/idb@7.1.1';
 import Peer from 'https://esm.sh/peerjs@1.5.4?bundle-deps';
 import QRCode from 'https://esm.sh/qrcode@1.5.3';
 
@@ -17,34 +17,45 @@ async function initDB() {
     const statusEl = document.getElementById('storage-usage');
     if (statusEl) statusEl.textContent = 'Opening DB...';
 
+    // Timeout Promise
+    const timeout = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Database connection timed out. Blocked by another tab?")), 5000)
+    );
+
     try {
-        db = await openDB(DB_NAME, DB_VERSION, {
-            upgrade(db, oldVersion, newVersion, transaction) {
-                // Create object stores if they don't exist
-                if (!db.objectStoreNames.contains('topics')) {
-                    db.createObjectStore('topics', { keyPath: 'id' });
+        // Race openDB against timeout
+        db = await Promise.race([
+            openDB(DB_NAME, DB_VERSION, {
+                upgrade(db, oldVersion, newVersion, transaction) {
+                    console.log(`Upgrading DB from ${oldVersion} to ${newVersion}`);
+                    if (!db.objectStoreNames.contains('topics')) {
+                        db.createObjectStore('topics', { keyPath: 'id' });
+                    }
+                    if (!db.objectStoreNames.contains('items')) {
+                        const itemStore = db.createObjectStore('items', { keyPath: 'id' });
+                        itemStore.createIndex('topicId', 'topicId');
+                    }
+                    if (!db.objectStoreNames.contains('settings')) {
+                        db.createObjectStore('settings', { keyPath: 'key' });
+                    }
+                },
+                blocked() {
+                    console.warn("DB Blocked");
+                    if (statusEl) statusEl.textContent = 'DB Blocked! Close other tabs.';
+                },
+                blocking() {
+                    console.warn("DB Blocking");
+                    db.close();
+                    if (statusEl) statusEl.textContent = 'DB Blocking upgrade. Reloading...';
+                    location.reload();
+                },
+                terminated() {
+                    console.error("DB Terminated");
+                    if (statusEl) statusEl.textContent = 'DB Connection Terminated.';
                 }
-                if (!db.objectStoreNames.contains('items')) {
-                    const itemStore = db.createObjectStore('items', { keyPath: 'id' });
-                    itemStore.createIndex('topicId', 'topicId');
-                }
-                if (!db.objectStoreNames.contains('settings')) {
-                    db.createObjectStore('settings', { keyPath: 'key' });
-                }
-            },
-            blocked() {
-                console.warn("Database upgrade blocked. Please close other tabs.");
-                alert("Database upgrade blocked. Please close other tabs of this app and reload.");
-            },
-            blocking() {
-                db.close();
-                console.warn("Database blocking upgrade in another tab. Closing.");
-                alert("A new version is available. Please reload this tab.");
-            },
-            terminated() {
-                console.error("Database connection terminated.");
-            }
-        });
+            }),
+            timeout
+        ]);
 
         if (statusEl) statusEl.textContent = 'Migrating...';
         await checkMigration();
@@ -53,13 +64,32 @@ async function initDB() {
         await refreshState();
 
         if (statusEl) statusEl.textContent = 'Rendering...';
-        updateView(); // Initial render based on URL
-        
-        // Final update happens inside refreshState -> updateStorageUsage
+        updateView(); 
         
     } catch (e) {
-        if (statusEl) statusEl.textContent = 'Error: ' + e.message;
-        throw e; // Re-throw to be caught by the global handler
+        console.error("Init failed:", e);
+        if (statusEl) {
+            statusEl.innerHTML = `Error: ${e.message} <button id="btn-reset-db" style="font-size:0.7em; padding:2px 5px; margin-left:5px;">Reset App</button>`;
+            
+            // Add Reset Handler
+            setTimeout(() => {
+                const btn = document.getElementById('btn-reset-db');
+                if (btn) {
+                    btn.onclick = async () => {
+                        if (confirm("This will DELETE ALL DATA to fix the corruption. Are you sure?")) {
+                            statusEl.textContent = 'Deleting DB...';
+                            try {
+                                await deleteDB(DB_NAME);
+                                localStorage.clear();
+                                location.reload();
+                            } catch (err) {
+                                alert("Failed to delete: " + err.message);
+                            }
+                        }
+                    };
+                }
+            }, 100);
+        }
     }
 }
 
