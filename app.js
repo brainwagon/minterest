@@ -340,20 +340,40 @@ function createItemCard(item) {
         };
         card.style.cursor = 'pointer';
     } else if (item.type === 'link') {
-        const url = new URL(item.content);
-        const bgColor = getPastelColor(url.hostname);
-        const faviconUrl = `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`;
+        let hostname = 'Link';
+        let faviconUrl = '';
+        let validUrl = false;
         
-        contentHtml = `
-            <div class="link-preview" style="background-color: ${bgColor};">
-                <img src="${faviconUrl}" class="link-favicon" onerror="this.style.display='none'">
-                <div class="link-domain">${url.hostname}</div>
-            </div>
-            <div class="card-content">
-                <div class="card-title">${item.title || url.hostname}</div>
-                <a href="${item.content}" target="_blank" class="card-link">${item.content}</a>
-                ${item.comment ? `<div class="card-comment">${item.comment}</div>` : ''}
-            </div>`;
+        try {
+            const url = new URL(item.content);
+            hostname = url.hostname;
+            // Google Favicon service
+            faviconUrl = `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`;
+            validUrl = true;
+        } catch (e) {
+            console.warn('Invalid URL:', item.content);
+        }
+        
+        if (validUrl) {
+            const bgColor = getPastelColor(hostname);
+            contentHtml = `
+                <div class="link-preview" style="background-color: ${bgColor};">
+                    <img src="${faviconUrl}" class="link-favicon" onerror="this.style.display='none'">
+                    <div class="link-domain">${hostname}</div>
+                </div>
+                <div class="card-content">
+                    <div class="card-title">${item.title || hostname}</div>
+                    <a href="${item.content}" target="_blank" class="card-link">${item.content}</a>
+                    ${item.comment ? `<div class="card-comment">${item.comment}</div>` : ''}
+                </div>`;
+        } else {
+             contentHtml = `
+                <div class="card-content">
+                    <div class="card-title">Broken Link</div>
+                    <p class="card-link">${item.content}</p>
+                    ${item.comment ? `<div class="card-comment">${item.comment}</div>` : ''}
+                </div>`;
+        }
     } else { // note
         card.classList.add('card-note');
         if (item.color) {
@@ -1010,7 +1030,10 @@ async function mergeData(data) {
 }
 
 // --- Init ---
-initDB();
+initDB().catch(e => {
+    console.error("Initialization failed:", e);
+    document.getElementById('main-grid').innerHTML = `<div class="empty-msg error">Failed to load application: ${e.message}</div>`;
+});
 
 // --- Edit Color Dialog Logic ---
 const dlgEditColor = document.getElementById('dlg-edit-color');
