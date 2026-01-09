@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="minterest - A tiny, local-first Pinterest clone">
+    <title>minterest</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <header>
+        <div class="header-content">
+            <h1 id="app-logo">minterest</h1>
+            <nav id="nav-controls">
+                <button id="btn-dashboard" class="hidden">← Back to Topics</button>
+                <div class="actions">
+                    <button id="btn-export" title="Backup to File">💾 Export</button>
+                    <button id="btn-import" title="Restore from Backup">📂 Import</button>
+                    <input type="file" id="import-file" accept=".json" style="display: none;">
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <main id="app">
+        <!-- Dashboard View (Topics) -->
+        <section id="dashboard-view" class="view">
+            <div class="view-header">
+                <h2>My Topics</h2>
+                <button id="btn-add-topic" class="btn-primary">+ New Topic</button>
+            </div>
+            <div id="topics-grid" class="grid">
+                <!-- Topics will be rendered here -->
+            </div>
+        </section>
+
+        <!-- Board View (Items) -->
+        <section id="board-view" class="view hidden">
+            <div class="view-header">
+                <h2 id="board-title">Topic Name</h2>
+                <div class="board-actions">
+                    <button id="btn-add-note" class="btn-secondary">+ Add Note</button>
+                    <p class="hint">Tip: Drag & drop links or images here!</p>
+                </div>
+            </div>
+            <div id="items-grid" class="grid masonry">
+                <!-- Items will be rendered here -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Dialog for New Topic -->
+    <dialog id="dlg-topic">
+        <form method="dialog">
+            <h3>Create New Topic</h3>
+            <input type="text" id="topic-name-input" placeholder="Enter topic name..." required>
+            <div class="dialog-buttons">
+                <button type="button" id="btn-cancel-topic">Cancel</button>
+                <button type="submit" id="btn-confirm-topic" class="btn-primary">Create</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>

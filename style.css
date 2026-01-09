@@ -1,0 +1,308 @@
+:root {
+    --bg-color: #f8f9fa;
+    --text-color: #212529;
+    --accent-color: #e60023; /* Pinterest Red */
+    --card-bg: #ffffff;
+    --border-radius: 16px;
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --header-height: 70px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    margin: 0;
+    padding-top: var(--header-height);
+    line-height: 1.5;
+}
+
+/* Drag Overlay */
+body.drag-over {
+    background-color: #e2e8f0;
+    outline: 4px dashed var(--accent-color);
+    outline-offset: -10px;
+}
+
+header {
+    position: fixed;
+    top: 0;
+    width: 100%;
+    height: var(--header-height);
+    background: white;
+    z-index: 100;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.1);
+    display: flex;
+    align-items: center;
+    padding: 0 2rem;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+#app-logo {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--accent-color);
+    margin: 0;
+    cursor: pointer;
+}
+
+#nav-controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.view {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.view-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Grids */
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1.25rem;
+    align-items: start;
+}
+
+.masonry {
+    /* Use a standard grid but ensure items don't stretch */
+    align-items: start;
+}
+
+/* Empty State */
+.empty-msg {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 4rem 2rem;
+    color: #888;
+    background: rgba(0,0,0,0.02);
+    border: 2px dashed #ddd;
+    border-radius: var(--border-radius);
+}
+
+/* Cards */
+.card {
+    background: var(--card-bg);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor: grab;
+    position: relative;
+    border: 1px solid rgba(0,0,0,0.05);
+}
+
+.card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.12);
+}
+
+.card:active {
+    cursor: grabbing;
+}
+
+.card-content {
+    padding: 1rem;
+}
+
+.card-image {
+    width: 100%;
+    display: block;
+    object-fit: cover;
+    max-height: 400px;
+    background: #eee;
+}
+
+/* Rich Link Card Styles */
+.link-preview {
+    height: 140px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.link-favicon {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    background: white;
+    padding: 4px;
+    object-fit: contain;
+    z-index: 2;
+}
+
+.link-domain {
+    margin-top: 0.5rem;
+    font-weight: 700;
+    color: rgba(0,0,0,0.7);
+    font-size: 1.1rem;
+    z-index: 2;
+    text-shadow: 0 1px 2px rgba(255,255,255,0.5);
+}
+
+.card-title {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    font-size: 1rem;
+    word-break: break-word;
+}
+
+.card-link {
+    font-size: 0.85rem;
+    color: #666;
+    text-decoration: none;
+    display: block;
+    margin-top: 0.5rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Card Actions */
+.card-actions {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 10;
+}
+
+.card:hover .card-actions {
+    opacity: 1;
+}
+
+.card-btn {
+    background: rgba(255,255,255,0.95);
+    border: 1px solid rgba(0,0,0,0.1);
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    padding: 0;
+    transition: background 0.2s;
+}
+
+.card-btn:hover {
+    background: white;
+    transform: scale(1.05);
+}
+
+.card-comment {
+    margin-top: 0.8rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid #eee;
+    font-size: 0.9rem;
+    color: #555;
+    font-style: italic;
+    word-break: break-word;
+}
+
+/* Topic Cards specific */
+.topic-card {
+    height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: white;
+    background: var(--accent-color);
+}
+
+/* Buttons */
+button {
+    padding: 0.6rem 1.2rem;
+    border-radius: 24px;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.2s;
+}
+
+button:hover {
+    filter: brightness(0.9);
+}
+
+.btn-primary {
+    background-color: var(--accent-color);
+    color: white;
+}
+
+.btn-secondary {
+    background-color: #efefef;
+    color: black;
+}
+
+/* Dialog */
+dialog {
+    border: none;
+    border-radius: var(--border-radius);
+    padding: 2rem;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    width: 400px;
+}
+
+dialog::backdrop {
+    background: rgba(0,0,0,0.5);
+}
+
+dialog input {
+    width: 100%;
+    padding: 0.8rem;
+    margin: 1rem 0;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+.dialog-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+}
+
+.hint {
+    font-size: 0.9rem;
+    color: #888;
+}
+
+/* Dragging state for SortableJS */
+.sortable-ghost {
+    opacity: 0.4;
+    border: 2px dashed var(--accent-color);
+}
