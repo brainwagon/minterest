@@ -51,8 +51,13 @@ header {
     margin: 0 auto;
 }
 
+#logo-container {
+    display: flex;
+    flex-direction: column;
+}
+
 #app-logo {
-    font-size: 1.5rem;
+    font-size: 1.8rem;
     font-weight: 800;
     color: var(--accent-color);
     margin: 0;
@@ -61,7 +66,7 @@ header {
 }
 
 #app-subtitle {
-    font-size: 0.75rem;
+    font-size: 0.9rem;
     font-weight: 500;
     color: #888;
     margin: 0;
@@ -295,7 +300,19 @@ main#app {
     color: var(--accent-color);
 }
 
-/* Button with icon adjustment - merged into main button rule below */
+/* Button with icon adjustment */
+button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.2rem;
+    border-radius: 24px;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.2s;
+}
 
 .card-comment {
     margin-top: 0.8rem;
@@ -322,10 +339,6 @@ main#app {
 
 /* Buttons */
 button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
     padding: 0.6rem 1.2rem;
     border-radius: 24px;
     border: none;
@@ -378,6 +391,67 @@ dialog input {
 .hint {
     font-size: 0.9rem;
     color: #888;
+}
+
+/* Sync Dialog Styles */
+.sync-container {
+    text-align: center;
+}
+
+.sync-tabs {
+    display: flex;
+    background: #efefef;
+    border-radius: 24px;
+    padding: 4px;
+    margin-bottom: 1.5rem;
+}
+
+.sync-tabs button {
+    flex: 1;
+    background: transparent;
+    color: #666;
+    padding: 0.5rem;
+    border-radius: 20px;
+}
+
+.sync-tabs button.active {
+    background: white;
+    color: black;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.sync-panel {
+    min-height: 250px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#qrcode-container {
+    margin: 1rem 0;
+    background: white;
+    padding: 1rem;
+    border-radius: 8px;
+}
+
+.sync-id-display {
+    font-family: monospace;
+    font-size: 1.2rem;
+    background: #eee;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    margin: 0.5rem 0;
+}
+
+.status-box {
+    margin-top: 1rem;
+    padding: 0.8rem;
+    background: #f0f8ff;
+    border: 1px solid #cce5ff;
+    border-radius: 8px;
+    color: #004085;
+    font-size: 0.9rem;
+    width: 100%;
 }
 
 /* Footer */

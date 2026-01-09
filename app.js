@@ -1,5 +1,7 @@
 import Sortable from 'https://esm.sh/sortablejs@1.15.0';
 import { openDB } from 'https://esm.sh/idb@7.1.1';
+import Peer from 'https://esm.sh/peerjs@1.5.4?bundle-deps';
+import QRCode from 'https://esm.sh/qrcode@1.5.3';
 
 // --- Configuration ---
 const DB_NAME = 'minterest-db';
@@ -644,6 +646,157 @@ document.getElementById('import-file').onchange = (e) => {
     };
     reader.readAsText(file);
 };
+
+// --- P2P Sync Logic ---
+const btnSync = document.getElementById('btn-sync');
+const dlgSync = document.getElementById('dlg-sync');
+const btnCloseSync = document.getElementById('btn-close-sync');
+const tabSend = document.getElementById('tab-send');
+const tabReceive = document.getElementById('tab-receive');
+const panelSend = document.getElementById('panel-send');
+const panelReceive = document.getElementById('panel-receive');
+
+let peer = null;
+let activeConn = null;
+
+btnSync.onclick = () => {
+    dlgSync.showModal();
+    initHostMode(); // Default to host
+};
+
+btnCloseSync.onclick = () => {
+    dlgSync.close();
+    if (peer) {
+        peer.destroy();
+        peer = null;
+    }
+};
+
+// Tabs
+tabSend.onclick = () => {
+    tabSend.classList.add('active');
+    tabReceive.classList.remove('active');
+    panelSend.classList.remove('hidden');
+    panelReceive.classList.add('hidden');
+    initHostMode();
+};
+
+tabReceive.onclick = () => {
+    tabReceive.classList.add('active');
+    tabSend.classList.remove('active');
+    panelReceive.classList.remove('hidden');
+    panelSend.classList.add('hidden');
+    initJoinMode();
+};
+
+// Host Mode (Sender)
+function initHostMode() {
+    if (peer) peer.destroy();
+    document.getElementById('send-status').textContent = 'Initializing P2P Network...';
+    document.getElementById('qrcode-container').innerHTML = '';
+    document.getElementById('my-peer-id').textContent = '...';
+
+    peer = new Peer(); // Auto-generate ID
+
+    peer.on('open', (id) => {
+        document.getElementById('my-peer-id').textContent = id;
+        document.getElementById('send-status').textContent = 'Waiting for peer to connect...';
+        
+        // Generate QR Code
+        QRCode.toCanvas(id, { width: 200 }, (err, canvas) => {
+            if (!err) document.getElementById('qrcode-container').appendChild(canvas);
+        });
+    });
+
+    peer.on('connection', (conn) => {
+        activeConn = conn;
+        document.getElementById('send-status').textContent = 'Peer connected! Handshaking...';
+        
+        conn.on('data', async (data) => {
+            if (data && data.type === 'REQUEST_SYNC') {
+                document.getElementById('send-status').textContent = 'Sending data... Do not close.';
+                await sendDataToPeer(conn);
+                document.getElementById('send-status').textContent = 'Sync Complete!';
+            }
+        });
+    });
+
+    peer.on('error', (err) => {
+        console.error(err);
+        document.getElementById('send-status').textContent = 'Error: ' + err.type;
+    });
+}
+
+async function sendDataToPeer(conn) {
+    const topics = await db.getAll('topics');
+    const items = await db.getAll('items');
+    
+    // Simple Protocol: Send 1 big chunk for now (simpler for MVP)
+    // PeerJS V1 handles binary chunking automatically for us.
+    conn.send({
+        type: 'SYNC_DATA',
+        payload: { topics, items }
+    });
+}
+
+// Join Mode (Receiver)
+function initJoinMode() {
+    if (peer) peer.destroy();
+    peer = new Peer(); // We need an ID to connect
+    const statusBox = document.getElementById('receive-status');
+    statusBox.classList.add('hidden');
+    statusBox.textContent = '';
+}
+
+document.getElementById('btn-connect').onclick = () => {
+    const remoteId = document.getElementById('remote-peer-id').value.trim();
+    if (!remoteId) return alert("Please enter the code from the other device.");
+
+    const statusBox = document.getElementById('receive-status');
+    statusBox.classList.remove('hidden');
+    statusBox.textContent = 'Connecting to peer...';
+
+    const conn = peer.connect(remoteId);
+
+    conn.on('open', () => {
+        statusBox.textContent = 'Connected! Requesting data...';
+        conn.send({ type: 'REQUEST_SYNC' });
+    });
+
+    conn.on('data', async (msg) => {
+        if (msg && msg.type === 'SYNC_DATA') {
+            statusBox.textContent = 'Data received! Saving...';
+            await mergeData(msg.payload);
+            statusBox.textContent = 'Sync Successful! Reloading...';
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        }
+    });
+
+    conn.on('error', (err) => {
+         statusBox.textContent = 'Connection Error: ' + err;
+    });
+};
+
+async function mergeData(data) {
+    const tx = db.transaction(['topics', 'items'], 'readwrite');
+    
+    // Simple Merge: Add missing. (Won't overwrite modified items with same ID, safer for now)
+    // Ideally we'd compare timestamps.
+    
+    for (const t of data.topics) {
+        // IDB 'put' overwrites. Let's use it to ensure we get the latest version from the sender.
+        // If we wanted "safe" merge, we'd use 'add' and ignore errors.
+        await tx.objectStore('topics').put(t); 
+    }
+    
+    for (const i of data.items) {
+        await tx.objectStore('items').put(i);
+    }
+    
+    await tx.done;
+}
 
 // --- Init ---
 initDB();

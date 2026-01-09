@@ -29,6 +29,10 @@
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
                         Import
                     </button>
+                    <button id="btn-sync" title="P2P Sync">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                        Sync
+                    </button>
                     <input type="file" id="import-file" accept=".json" style="display: none;">
                 </div>
             </nav>
@@ -87,6 +91,33 @@
                 <button type="submit" id="btn-confirm-topic" class="btn-primary">Create</button>
             </div>
         </form>
+    </dialog>
+
+    <!-- Dialog for Sync -->
+    <dialog id="dlg-sync">
+        <div class="sync-container">
+            <h3>Device Sync (P2P)</h3>
+            <div class="sync-tabs">
+                <button id="tab-send" class="active">Send Data</button>
+                <button id="tab-receive">Receive Data</button>
+            </div>
+            
+            <div id="panel-send" class="sync-panel">
+                <p>Scan this on the other device:</p>
+                <div id="qrcode-container"></div>
+                <p class="sync-id-display">Or enter code: <strong id="my-peer-id">Generating...</strong></p>
+                <div id="send-status" class="status-box">Waiting for connection...</div>
+            </div>
+
+            <div id="panel-receive" class="sync-panel hidden">
+                <p>Enter code from the other device:</p>
+                <input type="text" id="remote-peer-id" placeholder="e.g. funny-cat-99">
+                <button id="btn-connect" class="btn-primary">Connect & Sync</button>
+                <div id="receive-status" class="status-box hidden"></div>
+            </div>
+            
+            <button id="btn-close-sync" class="btn-secondary" style="margin-top: 1rem; width: 100%;">Close</button>
+        </div>
     </dialog>
 
     <script type="module" src="app.js"></script>
