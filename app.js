@@ -28,6 +28,18 @@ async function initDB() {
                 db.createObjectStore('settings', { keyPath: 'key' });
             }
         },
+        blocked() {
+            console.warn("Database upgrade blocked. Please close other tabs.");
+            alert("Database upgrade blocked. Please close other tabs of this app and reload.");
+        },
+        blocking() {
+            db.close();
+            console.warn("Database blocking upgrade in another tab. Closing.");
+            alert("A new version is available. Please reload this tab.");
+        },
+        terminated() {
+            console.error("Database connection terminated.");
+        }
     });
     await checkMigration();
     await refreshState();
@@ -69,18 +81,30 @@ async function checkMigration() {
 
 // Load data from DB into memory
 async function refreshState() {
-    const topics = await db.getAll('topics');
-    const items = await db.getAll('items');
-    const rootSettings = await db.get('settings', 'root');
-    
-    state.topics = topics;
-    state.items = items;
-    if (rootSettings) {
-        state.root = rootSettings;
-    } else {
-        state.root = { name: 'My Topics', description: 'Main Board' };
+    try {
+        state.topics = await db.getAll('topics');
+        state.items = await db.getAll('items');
+        
+        let rootSettings = null;
+        if (db.objectStoreNames.contains('settings')) {
+            try {
+                rootSettings = await db.get('settings', 'root');
+            } catch (e) {
+                console.warn("Failed to fetch settings, ignoring:", e);
+            }
+        }
+        
+        if (rootSettings) {
+            state.root = rootSettings;
+        } else {
+            state.root = { name: 'My Topics', description: 'Main Board' };
+        }
+        
+        updateStorageUsage();
+    } catch (e) {
+        console.error("Fatal error in refreshState:", e);
+        throw e;
     }
-    updateStorageUsage();
 }
 
 // --- Navigation ---
