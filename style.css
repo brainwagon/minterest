@@ -326,16 +326,17 @@ button {
 
 /* Topic Cards specific */
 .topic-card {
-    height: 160px;
+    height: 250px; /* Match typical card height better for masonry mixing */
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
-    font-size: 1.2rem;
+    font-size: 1.5rem;
     font-weight: bold;
     color: white;
     background: var(--accent-color);
     position: relative; /* Ensure buttons are positioned relative to card */
+    padding: 1rem;
 }
 
 /* Buttons */

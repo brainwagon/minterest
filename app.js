@@ -10,7 +10,7 @@ const STORAGE_KEY_OLD = 'minterest_data'; // For migration
 
 // --- Database & State ---
 let db;
-let state = { topics: [] }; // In-memory mirror for fast rendering
+let state = { topics: [], items: [] }; // Flat lists
 
 // Initialize Database
 async function initDB() {
@@ -68,13 +68,8 @@ async function checkMigration() {
 async function refreshState() {
     const topics = await db.getAll('topics');
     const items = await db.getAll('items');
-
-    // Stitch items back into topics for the UI
-    state.topics = topics.map(t => ({
-        ...t,
-        items: items.filter(i => i.topicId === t.id).sort((a, b) => (a.order || 0) - (b.order || 0))
-    }));
-    
+    state.topics = topics;
+    state.items = items;
     updateStorageUsage();
 }
 
@@ -94,13 +89,16 @@ function navigateToBoard(topicId) {
 
 function renderBreadcrumbs(topicId) {
     const container = document.getElementById('breadcrumbs');
+    if (!container) return; // In case I missed adding it back to the single view
     container.innerHTML = '';
     
     const path = [];
-    let curr = state.topics.find(t => t.id === topicId);
-    while (curr) {
-        path.unshift(curr);
-        curr = state.topics.find(t => t.id === curr.parentId);
+    if (topicId) {
+        let curr = state.topics.find(t => t.id === topicId);
+        while (curr) {
+            path.unshift(curr);
+            curr = state.topics.find(t => t.id === curr.parentId);
+        }
     }
     
     // Home
@@ -130,47 +128,45 @@ function renderBreadcrumbs(topicId) {
     // Update Back Button behavior
     const btnBack = document.getElementById('btn-dashboard');
     if (path.length > 0) {
+        btnBack.classList.remove('hidden');
         const current = path[path.length - 1];
         if (current.parentId) {
             btnBack.onclick = () => navigateToBoard(current.parentId);
         } else {
             btnBack.onclick = navigateToDashboard;
         }
+    } else {
+        btnBack.classList.add('hidden');
     }
 }
 
 function updateView() {
     const hash = window.location.hash.substring(1);
     
-    // Simple routing
     if (hash.startsWith('topic/')) {
         const topicId = hash.split('/')[1];
         const topic = state.topics.find(t => t.id === topicId);
         
         if (topic) {
             currentTopicId = topicId;
-            document.getElementById('dashboard-view').classList.add('hidden');
-            document.getElementById('board-view').classList.remove('hidden');
-            document.getElementById('btn-dashboard').classList.remove('hidden');
-            document.getElementById('board-title').textContent = topic.name;
-            const descEl = document.getElementById('board-description');
-            if (descEl) {
-                descEl.textContent = topic.description || '';
-            }
-            renderBreadcrumbs(topicId);
-            renderSubTopics();
-            renderItems();
-            return;
+            document.getElementById('view-title').textContent = topic.name;
+            const descEl = document.getElementById('view-description');
+            if (descEl) descEl.textContent = topic.description || '';
+            document.getElementById('btn-edit-topic').classList.remove('hidden');
+        } else {
+             // Invalid topic, go home
+             navigateToDashboard();
+             return;
         }
+    } else {
+        currentTopicId = null;
+        document.getElementById('view-title').textContent = 'My Topics';
+        document.getElementById('view-description').textContent = 'Main Board';
+        document.getElementById('btn-edit-topic').classList.add('hidden');
     }
     
-    // Default to Dashboard
-    currentTopicId = null;
-    document.getElementById('dashboard-view').classList.remove('hidden');
-    document.getElementById('board-view').classList.add('hidden');
-    document.getElementById('btn-dashboard').classList.add('hidden');
-    document.getElementById('breadcrumbs').innerHTML = ''; // Clear breadcrumbs on dashboard
-    renderTopics();
+    renderBreadcrumbs(currentTopicId);
+    renderContent();
 }
 
 window.addEventListener('hashchange', updateView);
@@ -184,10 +180,94 @@ const ICONS = {
     palette: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>`
 };
 
+function renderContent() {
+    const grid = document.getElementById('main-grid');
+    grid.innerHTML = '';
+
+    // Get Topics (where parentId matches)
+    // Note: root topics have parentId: null/undefined.
+    // currentTopicId is null for root.
+    const topics = state.topics.filter(t => {
+        if (!currentTopicId) return !t.parentId; // Root
+        return t.parentId === currentTopicId;
+    });
+
+    // Get Items (where topicId matches)
+    const items = state.items.filter(i => {
+         if (!currentTopicId) return !i.topicId; // Root items have null topicId
+         return i.topicId === currentTopicId;
+    });
+
+    // Combine and Sort
+    const content = [...topics.map(t => ({...t, _type: 'topic'})), ...items.map(i => ({...i, _type: 'item'}))];
+    content.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    if (content.length === 0) {
+        grid.innerHTML = '<div class="empty-msg">Nothing here yet. Add a topic, note, or drop an image!</div>';
+        return;
+    }
+
+    content.forEach(obj => {
+        let card;
+        if (obj._type === 'topic') {
+            card = createTopicCard(obj);
+        } else {
+            card = createItemCard(obj);
+        }
+        grid.appendChild(card);
+    });
+
+    initMixedSortable();
+}
+
+// --- Unified Sortable ---
+let sortableInstance = null;
+function initMixedSortable() {
+    const grid = document.getElementById('main-grid');
+    if (sortableInstance) sortableInstance.destroy();
+
+    sortableInstance = new Sortable(grid, {
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        draggable: '.card', // Both topics and items have .card class
+        onEnd: async () => {
+            // Get all children in DOM order
+            const els = Array.from(grid.querySelectorAll('.card'));
+            
+            const tx = db.transaction(['topics', 'items'], 'readwrite');
+            const promises = [];
+
+            els.forEach((el, index) => {
+                const id = el.dataset.id;
+                const type = el.dataset.type; // 'topic' or 'item' - need to ensure create functions add this
+                
+                if (type === 'topic') {
+                    const topic = state.topics.find(t => t.id === id);
+                    if (topic && topic.order !== index) {
+                        topic.order = index;
+                        promises.push(tx.objectStore('topics').put(topic));
+                    }
+                } else if (type === 'item') {
+                    const item = state.items.find(i => i.id === id);
+                    if (item && item.order !== index) {
+                        item.order = index;
+                        promises.push(tx.objectStore('items').put(item));
+                    }
+                }
+            });
+
+            await Promise.all(promises);
+            await tx.done;
+            await refreshState();
+        }
+    });
+}
+
 function createTopicCard(topic) {
     const el = document.createElement('div');
     el.className = 'card topic-card';
-    el.dataset.id = topic.id; // Required for Sortable
+    el.dataset.id = topic.id; 
+    el.dataset.type = 'topic'; // For Sortable
     el.textContent = topic.name;
     
     // Apply color if present, else default accent
@@ -203,7 +283,7 @@ function createTopicCard(topic) {
     
     // Actions Container
     const actions = document.createElement('div');
-    actions.className = 'card-actions'; // Reuse existing class
+    actions.className = 'card-actions'; 
     
     // Edit Color Button
     const colorBtn = document.createElement('button');
@@ -222,7 +302,7 @@ function createTopicCard(topic) {
     delBtn.innerHTML = ICONS.trash;
     delBtn.onclick = async (e) => {
         e.stopPropagation();
-        if (confirm(`Delete topic "${topic.name}"? This will delete all sub-topics and items inside.`)) {
+        if (confirm(`Delete topic "${topic.name}"? This will delete all content inside.`)) {
             await deleteTopic(topic.id);
         }
     };
@@ -233,188 +313,11 @@ function createTopicCard(topic) {
     return el;
 }
 
-function renderSubTopics() {
-    const grid = document.getElementById('subtopics-grid');
-    if (!grid) return;
-    grid.innerHTML = '';
-    
-    if (!currentTopicId) return;
-
-    const subTopics = state.topics.filter(t => t.parentId === currentTopicId);
-    
-    // Sort topics by order
-    subTopics.sort((a, b) => (a.order || 0) - (b.order || 0));
-
-    subTopics.forEach(topic => {
-        const el = createTopicCard(topic);
-        grid.appendChild(el);
-    });
-    
-    initSubTopicSortable();
-}
-
-let subTopicSortableInstance = null;
-function initSubTopicSortable() {
-    const grid = document.getElementById('subtopics-grid');
-    if (!grid) return;
-    if (subTopicSortableInstance) subTopicSortableInstance.destroy();
-
-    subTopicSortableInstance = new Sortable(grid, {
-        animation: 150,
-        ghostClass: 'sortable-ghost',
-        draggable: '.topic-card',
-        onEnd: async () => {
-            // Get IDs in new DOM order
-            const itemEls = Array.from(grid.querySelectorAll('.topic-card'));
-            const newOrderIds = itemEls.map(el => el.dataset.id);
-            
-            // Update order in DB
-            const tx = db.transaction('topics', 'readwrite');
-            const promises = [];
-            
-            const subTopics = state.topics.filter(t => t.parentId === currentTopicId);
-            subTopics.forEach(topic => {
-                const newIndex = newOrderIds.indexOf(topic.id.toString());
-                if (newIndex !== -1 && topic.order !== newIndex) {
-                    topic.order = newIndex;
-                    promises.push(tx.store.put(topic));
-                }
-            });
-            
-            await Promise.all(promises);
-            await tx.done;
-            await refreshState(); 
-        }
-    });
-}
-
-function renderTopics() {
-    const grid = document.getElementById('topics-grid');
-    grid.innerHTML = '';
-
-    const rootTopics = state.topics.filter(t => !t.parentId);
-
-    if (rootTopics.length === 0) {
-        grid.innerHTML = '<div class="empty-msg">No topics yet. Create one to get started!</div>';
-        return;
-    }
-
-    // Sort topics by order before rendering
-    rootTopics.sort((a, b) => (a.order || 0) - (b.order || 0));
-
-    rootTopics.forEach(topic => {
-        const el = createTopicCard(topic);
-        grid.appendChild(el);
-    });
-    
-    initTopicSortable();
-}
-
-let topicSortableInstance = null;
-function initTopicSortable() {
-    const grid = document.getElementById('topics-grid');
-    if (topicSortableInstance) topicSortableInstance.destroy();
-
-    topicSortableInstance = new Sortable(grid, {
-        animation: 150,
-        ghostClass: 'sortable-ghost',
-        draggable: '.topic-card',
-        onEnd: async () => {
-            // Get IDs in new DOM order
-            const itemEls = Array.from(grid.querySelectorAll('.topic-card'));
-            const newOrderIds = itemEls.map(el => el.dataset.id);
-            
-            // Update order in DB
-            const tx = db.transaction('topics', 'readwrite');
-            const promises = [];
-            
-            state.topics.forEach(topic => {
-                const newIndex = newOrderIds.indexOf(topic.id.toString());
-                if (newIndex !== -1 && topic.order !== newIndex) {
-                    topic.order = newIndex;
-                    promises.push(tx.store.put(topic));
-                }
-            });
-            
-            await Promise.all(promises);
-            await tx.done;
-            await refreshState(); 
-        }
-    });
-}
-
-function renderItems() {
-    const grid = document.getElementById('items-grid');
-    grid.innerHTML = '';
-    const topic = state.topics.find(t => t.id === currentTopicId);
-    if (!topic) return;
-
-    if (topic.items.length === 0) {
-        grid.innerHTML = '<div class="empty-msg">This topic is empty. Drag links, images, or add a note!</div>';
-        return;
-    }
-
-    topic.items.forEach(item => {
-        const card = createItemCard(item);
-        grid.appendChild(card);
-    });
-
-    initSortable();
-}
-
-// --- Helpers ---
-async function updateStorageUsage() {
-    if ('storage' in navigator && 'estimate' in navigator.storage) {
-        try {
-            const estimate = await navigator.storage.estimate();
-            const usage = estimate.usage; // Bytes
-            let display = '';
-            
-            if (usage < 1024) display = usage + ' B';
-            else if (usage < 1024 * 1024) display = (usage / 1024).toFixed(1) + ' KB';
-            else display = (usage / (1024 * 1024)).toFixed(1) + ' MB';
-            
-            document.getElementById('storage-usage').textContent = display;
-        } catch (e) {
-            console.error('Storage estimate failed', e);
-            document.getElementById('storage-usage').textContent = 'Unknown';
-        }
-    } else {
-        // Fallback for older browsers (approximate)
-        const topics = await db.getAll('topics');
-        const items = await db.getAll('items');
-        const json = JSON.stringify({ topics, items });
-        const bytes = new Blob([json]).size;
-         let display = '';
-        if (bytes < 1024) display = bytes + ' B';
-        else if (bytes < 1024 * 1024) display = (bytes / 1024).toFixed(1) + ' KB';
-        else display = (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-        document.getElementById('storage-usage').textContent = '~' + display;
-    }
-}
-
-function getCardColor(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-        hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
-    return '#' + '00000'.substring(0, 6 - c.length) + c;
-}
-
-function getPastelColor(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-        hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const hue = Math.abs(hash % 360);
-    return `hsl(${hue}, 70%, 90%)`;
-}
-
 function createItemCard(item) {
     const card = document.createElement('div');
     card.className = 'card';
     card.dataset.id = item.id;
+    card.dataset.type = 'item'; // For Sortable
 
     let contentHtml = '';
     if (item.type === 'image') {
@@ -433,7 +336,7 @@ function createItemCard(item) {
                     </body>
                 </html>
             `);
-            w.document.close(); // Important: Stops the loading spinner
+            w.document.close();
         };
         card.style.cursor = 'pointer';
     } else if (item.type === 'link') {
@@ -458,7 +361,7 @@ function createItemCard(item) {
         }
         
         // Apply random rotation only for notes
-        const rotation = (Math.random() * 16 - 8).toFixed(1); // Between -8 and 8 degrees
+        const rotation = (Math.random() * 16 - 8).toFixed(1); 
         card.style.setProperty('--rotation', `${rotation}deg`);
 
         contentHtml = `
@@ -495,7 +398,7 @@ function createItemCard(item) {
     if (item.type === 'note') {
         card.querySelector('.btn-color').onclick = (e) => {
             e.stopPropagation();
-            showEditColorDialog('item', item.id, item.color || '#fff740'); // Default yellow
+            showEditColorDialog('item', item.id, item.color || '#fff740'); 
         };
     }
 
@@ -505,9 +408,9 @@ function createItemCard(item) {
         const newComment = prompt("Add a comment:", item.comment || "");
         if (newComment !== null) {
             item.comment = newComment;
-            await db.put('items', item); // IDB Update
+            await db.put('items', item); 
             await refreshState();
-            renderItems();
+            renderContent();
         }
     };
 
@@ -515,67 +418,39 @@ function createItemCard(item) {
     card.querySelector('.btn-delete').onclick = async (e) => {
         e.stopPropagation();
         if (confirm(`Delete this ${item.type}?`)) {
-            await db.delete('items', item.id); // IDB Delete
+            await db.delete('items', item.id);
             await refreshState();
-            renderItems();
+            renderContent();
         }
     };
 
     return card;
 }
 
-// --- Drag & Drop Reordering ---
-let sortableInstance = null;
-function initSortable() {
-    const grid = document.getElementById('items-grid');
-    if (sortableInstance) sortableInstance.destroy();
-
-    sortableInstance = new Sortable(grid, {
-        animation: 150,
-        ghostClass: 'sortable-ghost',
-        draggable: '.card',
-        onEnd: async () => {
-            const topic = state.topics.find(t => t.id === currentTopicId);
-            if (!topic) return;
-            
-            // Get IDs in new DOM order
-            const itemEls = Array.from(grid.querySelectorAll('.card'));
-            const newOrderIds = itemEls.map(el => el.dataset.id);
-            
-            // Update order in DB
-            const tx = db.transaction('items', 'readwrite');
-            const promises = [];
-            
-            topic.items.forEach(item => {
-                const newIndex = newOrderIds.indexOf(item.id.toString());
-                if (newIndex !== -1 && item.order !== newIndex) {
-                    item.order = newIndex;
-                    promises.push(tx.store.put(item));
-                }
-            });
-            
-            await Promise.all(promises);
-            await tx.done;
-            // No need to refresh full state here as DOM is already correct, 
-            // but we sync memory state
-            await refreshState(); 
-        }
-    });
-}
 
 // --- Actions (Async) ---
+function getNextOrder(parentId) {
+    // Count both topics and items in this parent
+    const topics = state.topics.filter(t => {
+        if (!parentId) return !t.parentId;
+        return t.parentId === parentId;
+    });
+    const items = state.items.filter(i => {
+        if (!parentId) return !i.topicId;
+        return i.topicId === parentId;
+    });
+    return topics.length + items.length;
+}
+
 async function addNewTopic(name, color = null, description = '', parentId = null) {
     const id = crypto.randomUUID();
-    const topic = { id, name, order: state.topics.length, description, parentId };
+    const order = getNextOrder(parentId);
+    const topic = { id, name, order, description, parentId };
     if (color) topic.color = color;
     
     await db.add('topics', topic);
     await refreshState();
-    if (parentId) {
-        renderSubTopics();
-    } else {
-        renderTopics();
-    }
+    renderContent();
 }
 
 async function updateTopic(id, name, color, description) {
@@ -588,20 +463,20 @@ async function updateTopic(id, name, color, description) {
         await tx.store.put(topic);
         await tx.done;
         await refreshState();
-        // If we are currently viewing this board, update the view
+        // If viewing this board, update text
         if (currentTopicId === id) {
-            document.getElementById('board-title').textContent = name;
-            const descEl = document.getElementById('board-description');
+            document.getElementById('view-title').textContent = name;
+            const descEl = document.getElementById('view-description');
             if (descEl) descEl.textContent = description;
         }
+        renderContent(); // Re-render in case color changed
     }
 }
 
 async function deleteTopic(id) {
-    // Delete topic and all its items, and recursively delete sub-topics
+    // Recursive delete
     const tx = db.transaction(['topics', 'items'], 'readwrite');
     
-    // Recursive delete helper
     async function deleteRecursive(topicId, tx) {
         await tx.objectStore('topics').delete(topicId);
         
@@ -609,11 +484,7 @@ async function deleteTopic(id) {
         const items = await tx.objectStore('items').index('topicId').getAllKeys(topicId);
         await Promise.all(items.map(itemId => tx.objectStore('items').delete(itemId)));
         
-        // Find Sub-topics
-        // Note: In a real app we'd need an index on parentId to do this efficiently
-        // Since we don't have one in IDB, we have to rely on state or do a full scan (slow)
-        // Or we just add 'parentId' index during upgrade (recommended)
-        // For now, let's use the in-memory state to find IDs, then delete them in DB
+        // Find Sub-topics (in memory)
         const subTopics = state.topics.filter(t => t.parentId === topicId);
         for (const sub of subTopics) {
             await deleteRecursive(sub.id, tx);
@@ -625,30 +496,36 @@ async function deleteTopic(id) {
     await tx.done;
     await refreshState();
     
-    // If we deleted the current topic (or a parent of it), go home
     if (currentTopicId === id || !state.topics.find(t => t.id === currentTopicId)) {
-        navigateToDashboard();
-    } else {
-        if (currentTopicId) {
-             renderSubTopics();
+        if (currentTopicId === id) { 
+             navigateToDashboard(); // Deleted what we are viewing
         } else {
-             renderTopics();
+             // Deleted a subtopic of what we are viewing (rare but possible if we add delete logic for subs later)
+             // or deleted parent of current view.
+             // For safety, if current topic gone, go home.
+             if (currentTopicId && !state.topics.find(t => t.id === currentTopicId)) {
+                 navigateToDashboard();
+             } else {
+                 renderContent();
+             }
         }
+    } else {
+        renderContent();
     }
 }
 
 async function addItemToTopic(type, content, title = '', color = null) {
-    if (!currentTopicId) return;
-    const topic = state.topics.find(t => t.id === currentTopicId);
-    
+    // currentTopicId can be null (Root)
     const id = crypto.randomUUID();
+    const order = getNextOrder(currentTopicId);
+    
     const item = { 
         id, 
         topicId: currentTopicId, 
         type, 
         content, 
         title, 
-        order: topic.items.length
+        order
     };
     
     if (color) {
@@ -657,19 +534,16 @@ async function addItemToTopic(type, content, title = '', color = null) {
     
     await db.add('items', item);
     await refreshState();
-    renderItems();
+    renderContent();
 
-    // Background fetch for title if it's a link and no title provided
     if (type === 'link' && !title) {
         fetchTitle(content).then(async (fetchedTitle) => {
-            // We need to fetch the item fresh, in case it was modified/deleted
             const tx = db.transaction('items', 'readwrite');
             const freshItem = await tx.store.get(id);
             if (freshItem) {
                 if (fetchedTitle) {
                     freshItem.title = fetchedTitle;
                 } else {
-                    // Fetch failed (or no title tag), save hostname so spinner stops
                     try {
                         const url = new URL(freshItem.content);
                         freshItem.title = url.hostname;
@@ -680,7 +554,7 @@ async function addItemToTopic(type, content, title = '', color = null) {
                 await tx.store.put(freshItem);
                 await tx.done;
                 await refreshState();
-                renderItems();
+                renderContent();
             }
         });
     }
@@ -702,19 +576,48 @@ async function fetchTitle(url) {
     return null;
 }
 
+// --- Helpers ---
+async function updateStorageUsage() {
+    if ('storage' in navigator && 'estimate' in navigator.storage) {
+        try {
+            const estimate = await navigator.storage.estimate();
+            const usage = estimate.usage; // Bytes
+            let display = '';
+            
+            if (usage < 1024) display = usage + ' B';
+            else if (usage < 1024 * 1024) display = (usage / 1024).toFixed(1) + ' KB';
+            else display = (usage / (1024 * 1024)).toFixed(1) + ' MB';
+            
+            document.getElementById('storage-usage').textContent = display;
+        } catch (e) {
+            console.error('Storage estimate failed', e);
+            document.getElementById('storage-usage').textContent = 'Unknown';
+        }
+    } else {
+        // Fallback for older browsers (approximate)
+        const topics = await db.getAll('topics');
+        const items = await db.getAll('items');
+        const json = JSON.stringify({ topics, items });
+        const bytes = new Blob([json]).size;
+         let display = '';
+        if (bytes < 1024) display = bytes + ' B';
+        else if (bytes < 1024 * 1024) display = (bytes / 1024).toFixed(1) + ' KB';
+        else display = (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        document.getElementById('storage-usage').textContent = '~' + display;
+    }
+}
+
+
 // --- Event Listeners ---
 document.getElementById('app-logo').onclick = navigateToDashboard;
-document.getElementById('btn-dashboard').onclick = navigateToDashboard;
+// btn-dashboard removed (handled by breadcrumbs/view logic)
 
 const dlgTopic = document.getElementById('dlg-topic');
 const btnConfirmTopic = document.getElementById('btn-confirm-topic');
 
-// Add Topic Button (Dashboard)
-let addingParentId = null;
-
+// Add Topic Button (Combined)
 document.getElementById('btn-add-topic').onclick = () => {
     editingTopicId = null;
-    addingParentId = null;
     document.querySelector('#dlg-topic h3').textContent = 'Create New Topic';
     btnConfirmTopic.textContent = 'Create';
     
@@ -727,29 +630,7 @@ document.getElementById('btn-add-topic').onclick = () => {
     dlgTopic.showModal();
 };
 
-// Add Subtopic Button (Board)
-const btnAddSubtopic = document.getElementById('btn-add-subtopic');
-if (btnAddSubtopic) {
-    btnAddSubtopic.onclick = () => {
-        if (!currentTopicId) return;
-        editingTopicId = null;
-        addingParentId = currentTopicId;
-        
-        document.querySelector('#dlg-topic h3').textContent = 'Create Subtopic';
-        btnConfirmTopic.textContent = 'Create';
-        
-        // Reset form
-        document.getElementById('topic-name-input').value = '';
-        document.getElementById('topic-desc-input').value = '';
-        // Inherit color from parent or default? Let's default for now
-        const defaultColor = document.querySelector('input[name="topic-color"][value="#e60023"]');
-        if (defaultColor) defaultColor.checked = true;
-        
-        dlgTopic.showModal();
-    };
-}
-
-// Edit Topic Button (Board)
+// Edit Topic Button
 const btnEditTopic = document.getElementById('btn-edit-topic');
 if (btnEditTopic) {
     btnEditTopic.onclick = () => {
@@ -758,14 +639,12 @@ if (btnEditTopic) {
         if (!topic) return;
 
         editingTopicId = currentTopicId;
-        addingParentId = null;
         document.querySelector('#dlg-topic h3').textContent = 'Edit Topic';
         btnConfirmTopic.textContent = 'Save Changes';
 
         document.getElementById('topic-name-input').value = topic.name;
         document.getElementById('topic-desc-input').value = topic.description || '';
         
-        // Select color
         const color = topic.color || '#e60023';
         const colorInput = document.querySelector(`input[name="topic-color"][value="${color}"]`);
         if (colorInput) colorInput.checked = true;
@@ -778,8 +657,6 @@ document.getElementById('btn-cancel-topic').onclick = () => dlgTopic.close();
 dlgTopic.onsubmit = (e) => {
     const input = document.getElementById('topic-name-input');
     const descInput = document.getElementById('topic-desc-input');
-    
-    // Get color
     let color = null;
     const colorInput = document.querySelector('input[name="topic-color"]:checked');
     if (colorInput) color = colorInput.value;
@@ -787,22 +664,19 @@ dlgTopic.onsubmit = (e) => {
     if (editingTopicId) {
         updateTopic(editingTopicId, input.value, color, descInput.value);
     } else {
-        addNewTopic(input.value, color, descInput.value, addingParentId);
+        // currentTopicId is the parent (can be null for root)
+        addNewTopic(input.value, color, descInput.value, currentTopicId);
     }
     input.value = '';
     editingTopicId = null;
-    addingParentId = null;
 };
 
 // Note Dialog
 const dlgNote = document.getElementById('dlg-note');
 document.getElementById('btn-add-note').onclick = () => {
-    // Reset form
     document.getElementById('note-content-input').value = '';
-    // Select default color (yellow)
     const yellow = document.querySelector('input[name="note-color"][value="#e7ed43"]');
     if (yellow) yellow.checked = true;
-    
     dlgNote.showModal();
 };
 document.getElementById('btn-cancel-note').onclick = () => dlgNote.close();
@@ -816,28 +690,15 @@ dlgNote.onsubmit = (e) => {
 const dropZone = document.getElementById('drop-zone');
 const dropZoneInput = document.getElementById('drop-zone-input');
 
-// Handle Click to Upload
 dropZone.onclick = () => dropZoneInput.click();
 
 dropZoneInput.onchange = (e) => {
     const files = e.target.files;
     if (files && files.length > 0) {
         handleFiles(files);
-        dropZoneInput.value = ''; // Reset for next selection
+        dropZoneInput.value = '';
     }
 };
-
-function handleFiles(files) {
-    for (const file of files) {
-        if (file.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onloadend = () => {
-                addItemToTopic('image', reader.result);
-            };
-        }
-    }
-}
 
 ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
     dropZone.addEventListener(eventName, preventDefaults, false);
@@ -853,15 +714,13 @@ dropZone.addEventListener('dragleave', () => dropZone.classList.remove('active')
 
 dropZone.addEventListener('drop', async (e) => {
     dropZone.classList.remove('active');
-    if (!currentTopicId) return;
-
+    // Removed !currentTopicId check -> allow drop on root
     const dt = e.dataTransfer;
     const files = dt.files;
 
     if (files && files.length > 0) {
         handleFiles(files);
     } else {
-        // Handle Links/Text from other tabs
         const items = dt.items;
         for (let item of items) {
             if (item.kind === 'string' && item.type === 'text/uri-list') {
@@ -887,10 +746,10 @@ dropZone.addEventListener('drop', async (e) => {
     }
 });
 
-// Window level drag support
 window.addEventListener('dragover', (e) => {
     e.preventDefault();
-    if (currentTopicId && !dropZone.contains(e.target)) {
+    // Allow drag over anywhere
+    if (!dropZone.contains(e.target)) {
         document.body.classList.add('drag-over');
     }
 });
@@ -904,7 +763,8 @@ window.addEventListener('drop', async (e) => {
 
     e.preventDefault();
     document.body.classList.remove('drag-over');
-    if (!currentTopicId) return;
+    
+    // Allow drop anywhere to add to current topic (or root)
 
     const dt = e.dataTransfer;
     if (dt.files && dt.files.length > 0) {
@@ -935,16 +795,13 @@ window.addEventListener('drop', async (e) => {
 
 // --- Paste Support ---
 window.addEventListener('paste', async (e) => {
-    if (!currentTopicId) return;
-
-    // prevent pasting into input fields from triggering this
+    // Allow paste anywhere
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
     const items = (e.clipboardData || e.originalEvent.clipboardData).items;
 
     for (const item of items) {
         if (item.kind === 'file' && item.type.startsWith('image/')) {
-            // Handle Image File (e.g. screenshot)
             const file = item.getAsFile();
             const reader = new FileReader();
             reader.readAsDataURL(file);
@@ -952,7 +809,6 @@ window.addEventListener('paste', async (e) => {
                 addItemToTopic('image', reader.result);
             };
         } else if (item.kind === 'string' && item.type === 'text/plain') {
-            // Handle Text / URL
             item.getAsString((text) => {
                 if (text.startsWith('http')) {
                     if (text.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i)) {
@@ -961,10 +817,6 @@ window.addEventListener('paste', async (e) => {
                         addItemToTopic('link', text);
                     }
                 } else {
-                    // Optional: could handle plain text as a note, but might be annoying if accidental.
-                    // Let's stick to URLs for now, or maybe long text as note?
-                    // User asked for "cut a url... paste it".
-                    // Let's enable notes too if it looks like a note (not a url)
                      addItemToTopic('note', text);
                 }
             });
@@ -1223,12 +1075,7 @@ dlgEditColor.onsubmit = async (e) => {
             await store.put(entity);
             await tx.done;
             await refreshState();
-            
-            if (currentEditTarget.type === 'topic') {
-                renderTopics();
-            } else {
-                renderItems();
-            }
+            renderContent();
         }
     }
     currentEditTarget = null;
