@@ -14,36 +14,53 @@ let state = { topics: [], items: [], root: { name: 'My Topics', description: 'Ma
 
 // Initialize Database
 async function initDB() {
-    db = await openDB(DB_NAME, DB_VERSION, {
-        upgrade(db, oldVersion, newVersion, transaction) {
-            // Create object stores if they don't exist
-            if (!db.objectStoreNames.contains('topics')) {
-                db.createObjectStore('topics', { keyPath: 'id' });
+    const statusEl = document.getElementById('storage-usage');
+    if (statusEl) statusEl.textContent = 'Opening DB...';
+
+    try {
+        db = await openDB(DB_NAME, DB_VERSION, {
+            upgrade(db, oldVersion, newVersion, transaction) {
+                // Create object stores if they don't exist
+                if (!db.objectStoreNames.contains('topics')) {
+                    db.createObjectStore('topics', { keyPath: 'id' });
+                }
+                if (!db.objectStoreNames.contains('items')) {
+                    const itemStore = db.createObjectStore('items', { keyPath: 'id' });
+                    itemStore.createIndex('topicId', 'topicId');
+                }
+                if (!db.objectStoreNames.contains('settings')) {
+                    db.createObjectStore('settings', { keyPath: 'key' });
+                }
+            },
+            blocked() {
+                console.warn("Database upgrade blocked. Please close other tabs.");
+                alert("Database upgrade blocked. Please close other tabs of this app and reload.");
+            },
+            blocking() {
+                db.close();
+                console.warn("Database blocking upgrade in another tab. Closing.");
+                alert("A new version is available. Please reload this tab.");
+            },
+            terminated() {
+                console.error("Database connection terminated.");
             }
-            if (!db.objectStoreNames.contains('items')) {
-                const itemStore = db.createObjectStore('items', { keyPath: 'id' });
-                itemStore.createIndex('topicId', 'topicId');
-            }
-            if (!db.objectStoreNames.contains('settings')) {
-                db.createObjectStore('settings', { keyPath: 'key' });
-            }
-        },
-        blocked() {
-            console.warn("Database upgrade blocked. Please close other tabs.");
-            alert("Database upgrade blocked. Please close other tabs of this app and reload.");
-        },
-        blocking() {
-            db.close();
-            console.warn("Database blocking upgrade in another tab. Closing.");
-            alert("A new version is available. Please reload this tab.");
-        },
-        terminated() {
-            console.error("Database connection terminated.");
-        }
-    });
-    await checkMigration();
-    await refreshState();
-    updateView(); // Initial render based on URL
+        });
+
+        if (statusEl) statusEl.textContent = 'Migrating...';
+        await checkMigration();
+
+        if (statusEl) statusEl.textContent = 'Loading data...';
+        await refreshState();
+
+        if (statusEl) statusEl.textContent = 'Rendering...';
+        updateView(); // Initial render based on URL
+        
+        // Final update happens inside refreshState -> updateStorageUsage
+        
+    } catch (e) {
+        if (statusEl) statusEl.textContent = 'Error: ' + e.message;
+        throw e; // Re-throw to be caught by the global handler
+    }
 }
 
 // Migrate from localStorage if exists
