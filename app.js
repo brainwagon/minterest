@@ -432,11 +432,11 @@ function createItemCard(item) {
 function getNextOrder(parentId) {
     // Count both topics and items in this parent
     const topics = state.topics.filter(t => {
-        if (!parentId) return !t.parentId;
+        if (!parentId) return !t.parentId; // Root
         return t.parentId === parentId;
     });
     const items = state.items.filter(i => {
-        if (!parentId) return !i.topicId;
+        if (!parentId) return !i.topicId; // Root items have null topicId
         return i.topicId === parentId;
     });
     return topics.length + items.length;
@@ -576,38 +576,6 @@ async function fetchTitle(url) {
     return null;
 }
 
-// --- Helpers ---
-async function updateStorageUsage() {
-    if ('storage' in navigator && 'estimate' in navigator.storage) {
-        try {
-            const estimate = await navigator.storage.estimate();
-            const usage = estimate.usage; // Bytes
-            let display = '';
-            
-            if (usage < 1024) display = usage + ' B';
-            else if (usage < 1024 * 1024) display = (usage / 1024).toFixed(1) + ' KB';
-            else display = (usage / (1024 * 1024)).toFixed(1) + ' MB';
-            
-            document.getElementById('storage-usage').textContent = display;
-        } catch (e) {
-            console.error('Storage estimate failed', e);
-            document.getElementById('storage-usage').textContent = 'Unknown';
-        }
-    } else {
-        // Fallback for older browsers (approximate)
-        const topics = await db.getAll('topics');
-        const items = await db.getAll('items');
-        const json = JSON.stringify({ topics, items });
-        const bytes = new Blob([json]).size;
-         let display = '';
-        if (bytes < 1024) display = bytes + ' B';
-        else if (bytes < 1024 * 1024) display = (bytes / 1024).toFixed(1) + ' KB';
-        else display = (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-        document.getElementById('storage-usage').textContent = '~' + display;
-    }
-}
-
-
 // --- Event Listeners ---
 document.getElementById('app-logo').onclick = navigateToDashboard;
 // btn-dashboard removed (handled by breadcrumbs/view logic)
@@ -700,6 +668,61 @@ dropZoneInput.onchange = (e) => {
     }
 };
 
+function handleFiles(files) {
+    for (const file of files) {
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onloadend = () => {
+                addItemToTopic('image', reader.result);
+            };
+        }
+    }
+}
+
+function handleDataTransfer(dt) {
+    // 1. Files
+    if (dt.files && dt.files.length > 0) {
+        handleFiles(dt.files);
+        return;
+    }
+
+    // 2. URI / URL
+    let url = dt.getData('text/uri-list');
+    if (!url) url = dt.getData('URL'); // Fallback
+
+    if (url) {
+        // Some browsers include comments or multiple lines
+        url = url.split('\n')[0].trim();
+        // Ignore internal SortableJS drags or empty strings
+        if (url && !url.startsWith('#')) {
+            if (url.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i)) {
+                addItemToTopic('image', url);
+            } else {
+                addItemToTopic('link', url);
+            }
+            return;
+        }
+    }
+
+    // 3. Plain Text
+    const text = dt.getData('text/plain');
+    if (text) {
+        const trimmed = text.trim();
+        if (trimmed) {
+            if (trimmed.startsWith('http')) {
+                 if (trimmed.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i)) {
+                    addItemToTopic('image', trimmed);
+                } else {
+                    addItemToTopic('link', trimmed);
+                }
+            } else {
+                addItemToTopic('note', trimmed);
+            }
+        }
+    }
+}
+
 ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
     dropZone.addEventListener(eventName, preventDefaults, false);
 });
@@ -714,36 +737,7 @@ dropZone.addEventListener('dragleave', () => dropZone.classList.remove('active')
 
 dropZone.addEventListener('drop', async (e) => {
     dropZone.classList.remove('active');
-    // Removed !currentTopicId check -> allow drop on root
-    const dt = e.dataTransfer;
-    const files = dt.files;
-
-    if (files && files.length > 0) {
-        handleFiles(files);
-    } else {
-        const items = dt.items;
-        for (let item of items) {
-            if (item.kind === 'string' && item.type === 'text/uri-list') {
-                const url = dt.getData('URL');
-                if (url.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
-                    addItemToTopic('image', url);
-                } else {
-                    addItemToTopic('link', url);
-                }
-            } else if (item.kind === 'string' && item.type === 'text/plain') {
-                const text = dt.getData('text/plain');
-                if (text.startsWith('http')) {
-                     if (text.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
-                        addItemToTopic('image', text);
-                    } else {
-                        addItemToTopic('link', text);
-                    }
-                } else {
-                    addItemToTopic('note', text);
-                }
-            }
-        }
-    }
+    handleDataTransfer(e.dataTransfer);
 });
 
 window.addEventListener('dragover', (e) => {
@@ -764,33 +758,8 @@ window.addEventListener('drop', async (e) => {
     e.preventDefault();
     document.body.classList.remove('drag-over');
     
-    // Allow drop anywhere to add to current topic (or root)
-
-    const dt = e.dataTransfer;
-    if (dt.files && dt.files.length > 0) {
-        handleFiles(dt.files);
-    } else {
-        const items = dt.items;
-        for (let item of items) {
-            if (item.kind === 'string' && item.type === 'text/uri-list') {
-                const url = dt.getData('URL');
-                if (url.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
-                    addItemToTopic('image', url);
-                } else {
-                    addItemToTopic('link', url);
-                }
-            } else if (item.kind === 'string' && item.type === 'text/plain') {
-                const text = dt.getData('text/plain');
-                if (text.startsWith('http')) {
-                     if (text.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
-                        addItemToTopic('image', text);
-                    }
-                } else {
-                    addItemToTopic('note', text);
-                }
-            }
-        }
-    }
+    // Ignore drops from SortableJS reordering (internal)
+    handleDataTransfer(e.dataTransfer);
 });
 
 // --- Paste Support ---
