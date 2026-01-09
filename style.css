@@ -524,3 +524,37 @@ dialog input {
     margin-left: 0.5rem;
     vertical-align: middle;
 }
+
+/* Breadcrumbs */
+.breadcrumbs {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 500;
+    color: #555;
+    background: #f0f0f0;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+}
+
+.crumb {
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.crumb:hover {
+    color: var(--accent-color);
+    text-decoration: underline;
+}
+
+.crumb.active {
+    color: var(--text-color);
+    font-weight: 700;
+    cursor: default;
+    text-decoration: none;
+}
+
+.crumb-sep {
+    color: #999;
+    font-size: 0.9em;
+}

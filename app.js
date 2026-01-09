@@ -92,6 +92,53 @@ function navigateToBoard(topicId) {
     window.location.hash = `topic/${topicId}`;
 }
 
+function renderBreadcrumbs(topicId) {
+    const container = document.getElementById('breadcrumbs');
+    container.innerHTML = '';
+    
+    const path = [];
+    let curr = state.topics.find(t => t.id === topicId);
+    while (curr) {
+        path.unshift(curr);
+        curr = state.topics.find(t => t.id === curr.parentId);
+    }
+    
+    // Home
+    const home = document.createElement('span');
+    home.className = 'crumb';
+    home.textContent = 'Home';
+    home.onclick = navigateToDashboard;
+    container.appendChild(home);
+    
+    path.forEach((t, index) => {
+        const sep = document.createElement('span');
+        sep.className = 'crumb-sep';
+        sep.textContent = '/';
+        container.appendChild(sep);
+        
+        const crumb = document.createElement('span');
+        crumb.className = 'crumb';
+        crumb.textContent = t.name;
+        if (index === path.length - 1) {
+            crumb.classList.add('active');
+        } else {
+            crumb.onclick = () => navigateToBoard(t.id);
+        }
+        container.appendChild(crumb);
+    });
+    
+    // Update Back Button behavior
+    const btnBack = document.getElementById('btn-dashboard');
+    if (path.length > 0) {
+        const current = path[path.length - 1];
+        if (current.parentId) {
+            btnBack.onclick = () => navigateToBoard(current.parentId);
+        } else {
+            btnBack.onclick = navigateToDashboard;
+        }
+    }
+}
+
 function updateView() {
     const hash = window.location.hash.substring(1);
     
@@ -110,6 +157,8 @@ function updateView() {
             if (descEl) {
                 descEl.textContent = topic.description || '';
             }
+            renderBreadcrumbs(topicId);
+            renderSubTopics();
             renderItems();
             return;
         }
@@ -120,6 +169,7 @@ function updateView() {
     document.getElementById('dashboard-view').classList.remove('hidden');
     document.getElementById('board-view').classList.add('hidden');
     document.getElementById('btn-dashboard').classList.add('hidden');
+    document.getElementById('breadcrumbs').innerHTML = ''; // Clear breadcrumbs on dashboard
     renderTopics();
 }
 
@@ -134,65 +184,126 @@ const ICONS = {
     palette: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>`
 };
 
+function createTopicCard(topic) {
+    const el = document.createElement('div');
+    el.className = 'card topic-card';
+    el.dataset.id = topic.id; // Required for Sortable
+    el.textContent = topic.name;
+    
+    // Apply color if present, else default accent
+    if (topic.color) {
+        el.style.backgroundColor = topic.color;
+        el.style.color = '#333'; 
+    } else {
+            el.style.backgroundColor = 'var(--accent-color)';
+            el.style.color = 'white';
+    }
+
+    el.onclick = () => navigateToBoard(topic.id);
+    
+    // Actions Container
+    const actions = document.createElement('div');
+    actions.className = 'card-actions'; // Reuse existing class
+    
+    // Edit Color Button
+    const colorBtn = document.createElement('button');
+    colorBtn.className = 'card-btn';
+    colorBtn.title = "Change Color";
+    colorBtn.innerHTML = ICONS.palette;
+    colorBtn.onclick = (e) => {
+        e.stopPropagation();
+        showEditColorDialog('topic', topic.id, topic.color || '#e60023');
+    };
+    
+    // Delete Button
+    const delBtn = document.createElement('button');
+    delBtn.className = 'card-btn';
+    delBtn.title = "Delete Topic";
+    delBtn.innerHTML = ICONS.trash;
+    delBtn.onclick = async (e) => {
+        e.stopPropagation();
+        if (confirm(`Delete topic "${topic.name}"? This will delete all sub-topics and items inside.`)) {
+            await deleteTopic(topic.id);
+        }
+    };
+    
+    actions.appendChild(colorBtn);
+    actions.appendChild(delBtn);
+    el.appendChild(actions);
+    return el;
+}
+
+function renderSubTopics() {
+    const grid = document.getElementById('subtopics-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    
+    if (!currentTopicId) return;
+
+    const subTopics = state.topics.filter(t => t.parentId === currentTopicId);
+    
+    // Sort topics by order
+    subTopics.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    subTopics.forEach(topic => {
+        const el = createTopicCard(topic);
+        grid.appendChild(el);
+    });
+    
+    initSubTopicSortable();
+}
+
+let subTopicSortableInstance = null;
+function initSubTopicSortable() {
+    const grid = document.getElementById('subtopics-grid');
+    if (!grid) return;
+    if (subTopicSortableInstance) subTopicSortableInstance.destroy();
+
+    subTopicSortableInstance = new Sortable(grid, {
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        draggable: '.topic-card',
+        onEnd: async () => {
+            // Get IDs in new DOM order
+            const itemEls = Array.from(grid.querySelectorAll('.topic-card'));
+            const newOrderIds = itemEls.map(el => el.dataset.id);
+            
+            // Update order in DB
+            const tx = db.transaction('topics', 'readwrite');
+            const promises = [];
+            
+            const subTopics = state.topics.filter(t => t.parentId === currentTopicId);
+            subTopics.forEach(topic => {
+                const newIndex = newOrderIds.indexOf(topic.id.toString());
+                if (newIndex !== -1 && topic.order !== newIndex) {
+                    topic.order = newIndex;
+                    promises.push(tx.store.put(topic));
+                }
+            });
+            
+            await Promise.all(promises);
+            await tx.done;
+            await refreshState(); 
+        }
+    });
+}
+
 function renderTopics() {
     const grid = document.getElementById('topics-grid');
     grid.innerHTML = '';
 
-    if (state.topics.length === 0) {
+    const rootTopics = state.topics.filter(t => !t.parentId);
+
+    if (rootTopics.length === 0) {
         grid.innerHTML = '<div class="empty-msg">No topics yet. Create one to get started!</div>';
         return;
     }
 
     // Sort topics by order before rendering
-    state.topics.sort((a, b) => (a.order || 0) - (b.order || 0));
+    rootTopics.sort((a, b) => (a.order || 0) - (b.order || 0));
 
-    state.topics.forEach(topic => {
-        const el = document.createElement('div');
-        el.className = 'card topic-card';
-        el.dataset.id = topic.id; // Required for Sortable
-        el.textContent = topic.name;
-        
-        // Apply color if present, else default accent
-        if (topic.color) {
-            el.style.backgroundColor = topic.color;
-            el.style.color = '#333'; 
-        } else {
-             el.style.backgroundColor = 'var(--accent-color)';
-             el.style.color = 'white';
-        }
-
-        el.onclick = () => navigateToBoard(topic.id);
-        
-        // Actions Container
-        const actions = document.createElement('div');
-        actions.className = 'card-actions'; // Reuse existing class
-        
-        // Edit Color Button
-        const colorBtn = document.createElement('button');
-        colorBtn.className = 'card-btn';
-        colorBtn.title = "Change Color";
-        colorBtn.innerHTML = ICONS.palette;
-        colorBtn.onclick = (e) => {
-            e.stopPropagation();
-            showEditColorDialog('topic', topic.id, topic.color || '#e60023');
-        };
-        
-        // Delete Button
-        const delBtn = document.createElement('button');
-        delBtn.className = 'card-btn';
-        delBtn.title = "Delete Topic";
-        delBtn.innerHTML = ICONS.trash;
-        delBtn.onclick = async (e) => {
-            e.stopPropagation();
-            if (confirm(`Delete topic "${topic.name}"? This will delete all items inside.`)) {
-                await deleteTopic(topic.id);
-            }
-        };
-        
-        actions.appendChild(colorBtn);
-        actions.appendChild(delBtn);
-        el.appendChild(actions);
-        
+    rootTopics.forEach(topic => {
+        const el = createTopicCard(topic);
         grid.appendChild(el);
     });
     
@@ -453,14 +564,18 @@ function initSortable() {
 }
 
 // --- Actions (Async) ---
-async function addNewTopic(name, color = null, description = '') {
+async function addNewTopic(name, color = null, description = '', parentId = null) {
     const id = crypto.randomUUID();
-    const topic = { id, name, order: state.topics.length, description };
+    const topic = { id, name, order: state.topics.length, description, parentId };
     if (color) topic.color = color;
     
     await db.add('topics', topic);
     await refreshState();
-    renderTopics();
+    if (parentId) {
+        renderSubTopics();
+    } else {
+        renderTopics();
+    }
 }
 
 async function updateTopic(id, name, color, description) {
@@ -483,18 +598,43 @@ async function updateTopic(id, name, color, description) {
 }
 
 async function deleteTopic(id) {
-    // Delete topic and all its items
+    // Delete topic and all its items, and recursively delete sub-topics
     const tx = db.transaction(['topics', 'items'], 'readwrite');
-    await tx.objectStore('topics').delete(id);
     
-    // Find items for this topic to delete
-    // Note: A real 'index' based delete would be better but requires cursor or 'getAllKeys'
-    const items = await tx.objectStore('items').index('topicId').getAllKeys(id);
-    await Promise.all(items.map(itemId => tx.objectStore('items').delete(itemId)));
+    // Recursive delete helper
+    async function deleteRecursive(topicId, tx) {
+        await tx.objectStore('topics').delete(topicId);
+        
+        // Delete Items
+        const items = await tx.objectStore('items').index('topicId').getAllKeys(topicId);
+        await Promise.all(items.map(itemId => tx.objectStore('items').delete(itemId)));
+        
+        // Find Sub-topics
+        // Note: In a real app we'd need an index on parentId to do this efficiently
+        // Since we don't have one in IDB, we have to rely on state or do a full scan (slow)
+        // Or we just add 'parentId' index during upgrade (recommended)
+        // For now, let's use the in-memory state to find IDs, then delete them in DB
+        const subTopics = state.topics.filter(t => t.parentId === topicId);
+        for (const sub of subTopics) {
+            await deleteRecursive(sub.id, tx);
+        }
+    }
+
+    await deleteRecursive(id, tx);
     
     await tx.done;
     await refreshState();
-    renderTopics();
+    
+    // If we deleted the current topic (or a parent of it), go home
+    if (currentTopicId === id || !state.topics.find(t => t.id === currentTopicId)) {
+        navigateToDashboard();
+    } else {
+        if (currentTopicId) {
+             renderSubTopics();
+        } else {
+             renderTopics();
+        }
+    }
 }
 
 async function addItemToTopic(type, content, title = '', color = null) {
@@ -570,8 +710,11 @@ const dlgTopic = document.getElementById('dlg-topic');
 const btnConfirmTopic = document.getElementById('btn-confirm-topic');
 
 // Add Topic Button (Dashboard)
+let addingParentId = null;
+
 document.getElementById('btn-add-topic').onclick = () => {
     editingTopicId = null;
+    addingParentId = null;
     document.querySelector('#dlg-topic h3').textContent = 'Create New Topic';
     btnConfirmTopic.textContent = 'Create';
     
@@ -584,6 +727,28 @@ document.getElementById('btn-add-topic').onclick = () => {
     dlgTopic.showModal();
 };
 
+// Add Subtopic Button (Board)
+const btnAddSubtopic = document.getElementById('btn-add-subtopic');
+if (btnAddSubtopic) {
+    btnAddSubtopic.onclick = () => {
+        if (!currentTopicId) return;
+        editingTopicId = null;
+        addingParentId = currentTopicId;
+        
+        document.querySelector('#dlg-topic h3').textContent = 'Create Subtopic';
+        btnConfirmTopic.textContent = 'Create';
+        
+        // Reset form
+        document.getElementById('topic-name-input').value = '';
+        document.getElementById('topic-desc-input').value = '';
+        // Inherit color from parent or default? Let's default for now
+        const defaultColor = document.querySelector('input[name="topic-color"][value="#e60023"]');
+        if (defaultColor) defaultColor.checked = true;
+        
+        dlgTopic.showModal();
+    };
+}
+
 // Edit Topic Button (Board)
 const btnEditTopic = document.getElementById('btn-edit-topic');
 if (btnEditTopic) {
@@ -593,6 +758,7 @@ if (btnEditTopic) {
         if (!topic) return;
 
         editingTopicId = currentTopicId;
+        addingParentId = null;
         document.querySelector('#dlg-topic h3').textContent = 'Edit Topic';
         btnConfirmTopic.textContent = 'Save Changes';
 
@@ -621,10 +787,11 @@ dlgTopic.onsubmit = (e) => {
     if (editingTopicId) {
         updateTopic(editingTopicId, input.value, color, descInput.value);
     } else {
-        addNewTopic(input.value, color, descInput.value);
+        addNewTopic(input.value, color, descInput.value, addingParentId);
     }
     input.value = '';
     editingTopicId = null;
+    addingParentId = null;
 };
 
 // Note Dialog

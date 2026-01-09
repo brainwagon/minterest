@@ -16,9 +16,10 @@
                 <p id="app-subtitle">maintaining minimal interest</p>
             </div>
             <nav id="nav-controls">
+                <div id="breadcrumbs" class="breadcrumbs"></div>
                 <button id="btn-dashboard" class="hidden">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                    Back to Topics
+                    Back
                 </button>
                 <div class="actions">
                     <button id="btn-export" title="Backup to File">
@@ -62,6 +63,10 @@
                     <p id="board-description" style="margin: 0; color: #666;"></p>
                 </div>
                 <div class="board-actions">
+                    <button id="btn-add-subtopic" class="btn-secondary">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+                        Subtopic
+                    </button>
                     <button id="btn-edit-topic" class="btn-secondary" title="Edit Topic Details">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                         Edit
@@ -76,6 +81,9 @@
                         Add Note
                     </button>
                 </div>
+            </div>
+            <div id="subtopics-grid" class="grid" style="margin-bottom: 2rem;">
+                <!-- Subtopics will be rendered here -->
             </div>
             <div id="items-grid" class="grid masonry">
                 <!-- Items will be rendered here -->
