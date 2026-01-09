@@ -5,17 +5,17 @@ import QRCode from 'https://esm.sh/qrcode@1.5.3';
 
 // --- Configuration ---
 const DB_NAME = 'minterest-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORAGE_KEY_OLD = 'minterest_data'; // For migration
 
 // --- Database & State ---
 let db;
-let state = { topics: [], items: [] }; // Flat lists
+let state = { topics: [], items: [], root: { name: 'My Topics', description: 'Main Board' } }; // Flat lists
 
 // Initialize Database
 async function initDB() {
     db = await openDB(DB_NAME, DB_VERSION, {
-        upgrade(db) {
+        upgrade(db, oldVersion, newVersion, transaction) {
             // Create object stores if they don't exist
             if (!db.objectStoreNames.contains('topics')) {
                 db.createObjectStore('topics', { keyPath: 'id' });
@@ -23,6 +23,9 @@ async function initDB() {
             if (!db.objectStoreNames.contains('items')) {
                 const itemStore = db.createObjectStore('items', { keyPath: 'id' });
                 itemStore.createIndex('topicId', 'topicId');
+            }
+            if (!db.objectStoreNames.contains('settings')) {
+                db.createObjectStore('settings', { keyPath: 'key' });
             }
         },
     });
@@ -68,8 +71,15 @@ async function checkMigration() {
 async function refreshState() {
     const topics = await db.getAll('topics');
     const items = await db.getAll('items');
+    const rootSettings = await db.get('settings', 'root');
+    
     state.topics = topics;
     state.items = items;
+    if (rootSettings) {
+        state.root = rootSettings;
+    } else {
+        state.root = { name: 'My Topics', description: 'Main Board' };
+    }
     updateStorageUsage();
 }
 
@@ -160,9 +170,9 @@ function updateView() {
         }
     } else {
         currentTopicId = null;
-        document.getElementById('view-title').textContent = 'My Topics';
-        document.getElementById('view-description').textContent = 'Main Board';
-        document.getElementById('btn-edit-topic').classList.add('hidden');
+        document.getElementById('view-title').textContent = state.root.name;
+        document.getElementById('view-description').textContent = state.root.description;
+        document.getElementById('btn-edit-topic').classList.remove('hidden');
     }
     
     renderBreadcrumbs(currentTopicId);
@@ -673,18 +683,32 @@ document.getElementById('btn-add-topic').onclick = () => {
 const btnEditTopic = document.getElementById('btn-edit-topic');
 if (btnEditTopic) {
     btnEditTopic.onclick = () => {
-        if (!currentTopicId) return;
-        const topic = state.topics.find(t => t.id === currentTopicId);
-        if (!topic) return;
+        let name = '';
+        let description = '';
+        let color = '#e60023';
 
-        editingTopicId = currentTopicId;
-        document.querySelector('#dlg-topic h3').textContent = 'Edit Topic';
+        if (currentTopicId) {
+            const topic = state.topics.find(t => t.id === currentTopicId);
+            if (!topic) return;
+            editingTopicId = currentTopicId;
+            name = topic.name;
+            description = topic.description || '';
+            color = topic.color || '#e60023';
+        } else {
+            // Root
+            editingTopicId = 'root';
+            name = state.root.name;
+            description = state.root.description;
+            // Root doesn't really have a color card, but we can keep the picker for consistency or hide it.
+            // Let's keep it to simple.
+        }
+
+        document.querySelector('#dlg-topic h3').textContent = currentTopicId ? 'Edit Topic' : 'Edit Dashboard';
         btnConfirmTopic.textContent = 'Save Changes';
 
-        document.getElementById('topic-name-input').value = topic.name;
-        document.getElementById('topic-desc-input').value = topic.description || '';
+        document.getElementById('topic-name-input').value = name;
+        document.getElementById('topic-desc-input').value = description;
         
-        const color = topic.color || '#e60023';
         const colorInput = document.querySelector(`input[name="topic-color"][value="${color}"]`);
         if (colorInput) colorInput.checked = true;
 
@@ -693,14 +717,23 @@ if (btnEditTopic) {
 }
 
 document.getElementById('btn-cancel-topic').onclick = () => dlgTopic.close();
-dlgTopic.onsubmit = (e) => {
+dlgTopic.onsubmit = async (e) => {
     const input = document.getElementById('topic-name-input');
     const descInput = document.getElementById('topic-desc-input');
     let color = null;
     const colorInput = document.querySelector('input[name="topic-color"]:checked');
     if (colorInput) color = colorInput.value;
 
-    if (editingTopicId) {
+    if (editingTopicId === 'root') {
+        const newRoot = { 
+            key: 'root', 
+            name: input.value, 
+            description: descInput.value 
+        };
+        await db.put('settings', newRoot);
+        await refreshState();
+        updateView(); // Explicitly update view title
+    } else if (editingTopicId) {
         updateTopic(editingTopicId, input.value, color, descInput.value);
     } else {
         // currentTopicId is the parent (can be null for root)
