@@ -105,6 +105,10 @@ function updateView() {
             document.getElementById('board-view').classList.remove('hidden');
             document.getElementById('btn-dashboard').classList.remove('hidden');
             document.getElementById('board-title').textContent = topic.name;
+            const descEl = document.getElementById('board-description');
+            if (descEl) {
+                descEl.textContent = topic.description || '';
+            }
             renderItems();
             return;
         }
@@ -125,7 +129,8 @@ window.addEventListener('hashchange', updateView);
 const ICONS = {
     trash: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>`,
     pencil: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>`,
-    download: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>`
+    download: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>`,
+    palette: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>`
 };
 
 function renderTopics() {
@@ -137,28 +142,92 @@ function renderTopics() {
         return;
     }
 
+    // Sort topics by order before rendering
+    state.topics.sort((a, b) => (a.order || 0) - (b.order || 0));
+
     state.topics.forEach(topic => {
         const el = document.createElement('div');
         el.className = 'card topic-card';
+        el.dataset.id = topic.id; // Required for Sortable
         el.textContent = topic.name;
+        
+        // Apply color if present, else default accent
+        if (topic.color) {
+            el.style.backgroundColor = topic.color;
+            el.style.color = '#333'; 
+        } else {
+             el.style.backgroundColor = 'var(--accent-color)';
+             el.style.color = 'white';
+        }
+
         el.onclick = () => navigateToBoard(topic.id);
         
+        // Actions Container
+        const actions = document.createElement('div');
+        actions.className = 'card-actions'; // Reuse existing class
+        
+        // Edit Color Button
+        const colorBtn = document.createElement('button');
+        colorBtn.className = 'card-btn';
+        colorBtn.title = "Change Color";
+        colorBtn.innerHTML = ICONS.palette;
+        colorBtn.onclick = (e) => {
+            e.stopPropagation();
+            showEditColorDialog('topic', topic.id, topic.color || '#e60023');
+        };
+        
+        // Delete Button
         const delBtn = document.createElement('button');
-        delBtn.className = 'card-delete card-btn'; // Use card-btn for consistency
-        delBtn.style.position = 'absolute';
-        delBtn.style.top = '8px';
-        delBtn.style.right = '8px';
+        delBtn.className = 'card-btn';
         delBtn.title = "Delete Topic";
         delBtn.innerHTML = ICONS.trash;
-        
         delBtn.onclick = async (e) => {
             e.stopPropagation();
             if (confirm(`Delete topic "${topic.name}"? This will delete all items inside.`)) {
                 await deleteTopic(topic.id);
             }
         };
-        el.appendChild(delBtn);
+        
+        actions.appendChild(colorBtn);
+        actions.appendChild(delBtn);
+        el.appendChild(actions);
+        
         grid.appendChild(el);
+    });
+    
+    initTopicSortable();
+}
+
+let topicSortableInstance = null;
+function initTopicSortable() {
+    const grid = document.getElementById('topics-grid');
+    if (topicSortableInstance) topicSortableInstance.destroy();
+
+    topicSortableInstance = new Sortable(grid, {
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        draggable: '.topic-card',
+        onEnd: async () => {
+            // Get IDs in new DOM order
+            const itemEls = Array.from(grid.querySelectorAll('.topic-card'));
+            const newOrderIds = itemEls.map(el => el.dataset.id);
+            
+            // Update order in DB
+            const tx = db.transaction('topics', 'readwrite');
+            const promises = [];
+            
+            state.topics.forEach(topic => {
+                const newIndex = newOrderIds.indexOf(topic.id.toString());
+                if (newIndex !== -1 && topic.order !== newIndex) {
+                    topic.order = newIndex;
+                    promises.push(tx.store.put(topic));
+                }
+            });
+            
+            await Promise.all(promises);
+            await tx.done;
+            await refreshState(); 
+        }
     });
 }
 
@@ -272,6 +341,9 @@ function createItemCard(item) {
             </div>`;
     } else { // note
         card.classList.add('card-note');
+        if (item.color) {
+            card.style.background = item.color;
+        }
         
         // Apply random rotation only for notes
         const rotation = (Math.random() * 16 - 8).toFixed(1); // Between -8 and 8 degrees
@@ -288,6 +360,7 @@ function createItemCard(item) {
         ${contentHtml}
         <div class="card-actions">
             ${item.type === 'image' ? `<button class="card-btn btn-download" title="Download Image">${ICONS.download}</button>` : ''}
+            ${item.type === 'note' ? `<button class="card-btn btn-color" title="Change Color">${ICONS.palette}</button>` : ''}
             <button class="card-btn btn-edit" title="Edit Comment">${ICONS.pencil}</button>
             <button class="card-btn btn-delete" title="Delete Item">${ICONS.trash}</button>
         </div>
@@ -303,6 +376,14 @@ function createItemCard(item) {
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+        };
+    }
+
+    // Change Color Action (Note only)
+    if (item.type === 'note') {
+        card.querySelector('.btn-color').onclick = (e) => {
+            e.stopPropagation();
+            showEditColorDialog('item', item.id, item.color || '#fff740'); // Default yellow
         };
     }
 
@@ -371,9 +452,12 @@ function initSortable() {
 }
 
 // --- Actions (Async) ---
-async function addNewTopic(name) {
+async function addNewTopic(name, color = null, description = '') {
     const id = crypto.randomUUID();
-    await db.add('topics', { id, name });
+    const topic = { id, name, order: state.topics.length, description };
+    if (color) topic.color = color;
+    
+    await db.add('topics', topic);
     await refreshState();
     renderTopics();
 }
@@ -393,7 +477,7 @@ async function deleteTopic(id) {
     renderTopics();
 }
 
-async function addItemToTopic(type, content, title = '') {
+async function addItemToTopic(type, content, title = '', color = null) {
     if (!currentTopicId) return;
     const topic = state.topics.find(t => t.id === currentTopicId);
     
@@ -404,12 +488,58 @@ async function addItemToTopic(type, content, title = '') {
         type, 
         content, 
         title, 
-        order: topic.items.length 
+        order: topic.items.length
     };
+    
+    if (color) {
+        item.color = color;
+    }
     
     await db.add('items', item);
     await refreshState();
     renderItems();
+
+    // Background fetch for title if it's a link and no title provided
+    if (type === 'link' && !title) {
+        fetchTitle(content).then(async (fetchedTitle) => {
+            // We need to fetch the item fresh, in case it was modified/deleted
+            const tx = db.transaction('items', 'readwrite');
+            const freshItem = await tx.store.get(id);
+            if (freshItem) {
+                if (fetchedTitle) {
+                    freshItem.title = fetchedTitle;
+                } else {
+                    // Fetch failed (or no title tag), save hostname so spinner stops
+                    try {
+                        const url = new URL(freshItem.content);
+                        freshItem.title = url.hostname;
+                    } catch(e) {
+                        freshItem.title = "Link";
+                    }
+                }
+                await tx.store.put(freshItem);
+                await tx.done;
+                await refreshState();
+                renderItems();
+            }
+        });
+    }
+}
+
+async function fetchTitle(url) {
+    try {
+        const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
+        if (!response.ok) throw new Error(`Proxy error: ${response.status}`);
+        const data = await response.json();
+        if (data.contents) {
+            const doc = new DOMParser().parseFromString(data.contents, "text/html");
+            const title = doc.title;
+            return title || null;
+        }
+    } catch (e) {
+        console.warn("Failed to fetch page title:", e);
+    }
+    return null;
 }
 
 // --- Event Listeners ---
@@ -417,17 +547,45 @@ document.getElementById('app-logo').onclick = navigateToDashboard;
 document.getElementById('btn-dashboard').onclick = navigateToDashboard;
 
 const dlgTopic = document.getElementById('dlg-topic');
-document.getElementById('btn-add-topic').onclick = () => dlgTopic.showModal();
+document.getElementById('btn-add-topic').onclick = () => {
+    // Reset form
+    document.getElementById('topic-name-input').value = '';
+    document.getElementById('topic-desc-input').value = '';
+    const defaultColor = document.querySelector('input[name="topic-color"][value="#e60023"]');
+    if (defaultColor) defaultColor.checked = true;
+    
+    dlgTopic.showModal();
+};
 document.getElementById('btn-cancel-topic').onclick = () => dlgTopic.close();
 dlgTopic.onsubmit = (e) => {
     const input = document.getElementById('topic-name-input');
-    addNewTopic(input.value);
+    const descInput = document.getElementById('topic-desc-input');
+    
+    // Get color
+    let color = null;
+    const colorInput = document.querySelector('input[name="topic-color"]:checked');
+    if (colorInput) color = colorInput.value;
+
+    addNewTopic(input.value, color, descInput.value);
     input.value = '';
 };
 
+// Note Dialog
+const dlgNote = document.getElementById('dlg-note');
 document.getElementById('btn-add-note').onclick = () => {
-    const note = prompt("Enter your note:");
-    if (note) addItemToTopic('note', note);
+    // Reset form
+    document.getElementById('note-content-input').value = '';
+    // Select default color (yellow)
+    const yellow = document.querySelector('input[name="note-color"][value="#e7ed43"]');
+    if (yellow) yellow.checked = true;
+    
+    dlgNote.showModal();
+};
+document.getElementById('btn-cancel-note').onclick = () => dlgNote.close();
+dlgNote.onsubmit = (e) => {
+    const content = document.getElementById('note-content-input').value;
+    const color = document.querySelector('input[name="note-color"]:checked').value;
+    addItemToTopic('note', content, '', color);
 };
 
 // --- Drag & Drop Content ---
@@ -800,3 +958,54 @@ async function mergeData(data) {
 
 // --- Init ---
 initDB();
+
+// --- Edit Color Dialog Logic ---
+const dlgEditColor = document.getElementById('dlg-edit-color');
+let currentEditTarget = null; // { type: 'topic'|'item', id: '...' }
+
+function showEditColorDialog(type, id, currentColor) {
+    currentEditTarget = { type, id };
+    
+    // Select current color in picker
+    // Default to first if none matches
+    const inputs = document.querySelectorAll('input[name="edit-color"]');
+    let matched = false;
+    inputs.forEach(input => {
+        if (input.value === currentColor) {
+            input.checked = true;
+            matched = true;
+        }
+    });
+    if (!matched && inputs.length > 0) inputs[0].checked = true;
+
+    dlgEditColor.showModal();
+}
+
+document.getElementById('btn-cancel-edit-color').onclick = () => dlgEditColor.close();
+
+dlgEditColor.onsubmit = async (e) => {
+    if (!currentEditTarget) return;
+
+    const colorInput = document.querySelector('input[name="edit-color"]:checked');
+    const newColor = colorInput ? colorInput.value : null;
+
+    if (newColor) {
+        const tx = db.transaction([currentEditTarget.type === 'topic' ? 'topics' : 'items'], 'readwrite');
+        const store = tx.objectStore(currentEditTarget.type === 'topic' ? 'topics' : 'items');
+        
+        const entity = await store.get(currentEditTarget.id);
+        if (entity) {
+            entity.color = newColor;
+            await store.put(entity);
+            await tx.done;
+            await refreshState();
+            
+            if (currentEditTarget.type === 'topic') {
+                renderTopics();
+            } else {
+                renderItems();
+            }
+        }
+    }
+    currentEditTarget = null;
+};

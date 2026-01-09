@@ -175,7 +175,7 @@ main#app {
 
 /* Post-it Note Style */
 .card-note {
-    background: #fff740 !important; /* Post-it Yellow */
+    background: #fff740; /* Post-it Yellow (Default) */
     aspect-ratio: 1 / 1;
     display: flex;
     align-items: center;
@@ -335,6 +335,7 @@ button {
     font-weight: bold;
     color: white;
     background: var(--accent-color);
+    position: relative; /* Ensure buttons are positioned relative to card */
 }
 
 /* Buttons */
@@ -474,4 +475,52 @@ dialog input {
 .sortable-ghost {
     opacity: 0.4;
     border: 2px dashed var(--accent-color);
+}
+
+/* Color Picker Styles */
+.color-option {
+    cursor: pointer;
+    position: relative;
+    display: inline-block;
+    width: 32px;
+    height: 32px;
+}
+
+.color-option input[type="radio"] {
+    opacity: 0;
+    position: absolute;
+    width: 0;
+    height: 0;
+}
+
+.color-swatch {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    transition: transform 0.2s, border-color 0.2s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.color-option input[type="radio"]:checked + .color-swatch {
+    border-color: #333;
+    transform: scale(1.1);
+    box-shadow: 0 0 0 2px #fff inset; /* Create a gap effect */
+}
+
+.color-option:hover .color-swatch {
+    transform: scale(1.1);
+}
+
+/* Spinner */
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+.loading-spinner {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+    color: #999;
+    margin-left: 0.5rem;
+    vertical-align: middle;
 }
