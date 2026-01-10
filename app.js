@@ -158,6 +158,7 @@ async function refreshState() {
 // --- Navigation ---
 let currentTopicId = null;
 let editingTopicId = null;
+let editingItem = null;
 
 function navigateToDashboard() {
     currentTopicId = null;
@@ -513,15 +514,31 @@ function createItemCard(item) {
         };
     }
 
-    // Edit Comment Action
+    // Edit Comment / Content Action
     card.querySelector('.btn-edit').onclick = async (e) => {
         e.stopPropagation();
-        const newComment = prompt("Add a comment:", item.comment || "");
-        if (newComment !== null) {
-            item.comment = newComment;
-            await db.put('items', item); 
-            await refreshState();
-            renderContent();
+        
+        if (item.type === 'note') {
+            editingItem = item;
+            document.querySelector('#dlg-note h3').textContent = 'Edit Note';
+            document.getElementById('btn-confirm-note').textContent = 'Save Changes';
+            
+            document.getElementById('note-content-input').value = item.content;
+            document.getElementById('note-comment-input').value = item.comment || '';
+            
+            const colorToSelect = item.color || '#e7ed43';
+            const colorInput = document.querySelector(`input[name="note-color"][value="${colorToSelect}"]`);
+            if (colorInput) colorInput.checked = true;
+            
+            dlgNote.showModal();
+        } else {
+            const newComment = prompt("Add a comment:", item.comment || "");
+            if (newComment !== null) {
+                item.comment = newComment;
+                await db.put('items', item); 
+                await refreshState();
+                renderContent();
+            }
         }
     };
 
@@ -676,7 +693,7 @@ async function deleteTopic(id) {
     }
 }
 
-async function addItemToTopic(type, content, title = '', color = null) {
+async function addItemToTopic(type, content, title = '', color = null, comment = '') {
     // currentTopicId can be null (Root)
     const id = crypto.randomUUID();
     const order = getNextOrder(currentTopicId);
@@ -687,7 +704,8 @@ async function addItemToTopic(type, content, title = '', color = null) {
         type, 
         content, 
         title, 
-        order
+        order,
+        comment
     };
     
     if (color) {
@@ -826,17 +844,42 @@ dlgTopic.onsubmit = async (e) => {
 
 // Note Dialog
 const dlgNote = document.getElementById('dlg-note');
+const btnConfirmNote = document.getElementById('btn-confirm-note');
+
 document.getElementById('btn-add-note').onclick = () => {
+    editingItem = null;
+    document.querySelector('#dlg-note h3').textContent = 'Add a Note';
+    btnConfirmNote.textContent = 'Add Note';
+    
     document.getElementById('note-content-input').value = '';
+    document.getElementById('note-comment-input').value = '';
+    
     const yellow = document.querySelector('input[name="note-color"][value="#e7ed43"]');
     if (yellow) yellow.checked = true;
+    
     dlgNote.showModal();
 };
+
 document.getElementById('btn-cancel-note').onclick = () => dlgNote.close();
-dlgNote.onsubmit = (e) => {
+
+dlgNote.onsubmit = async (e) => {
     const content = document.getElementById('note-content-input').value;
+    const comment = document.getElementById('note-comment-input').value;
     const color = document.querySelector('input[name="note-color"]:checked').value;
-    addItemToTopic('note', content, '', color);
+
+    if (editingItem) {
+        editingItem.content = content;
+        editingItem.comment = comment;
+        editingItem.color = color;
+        
+        await db.put('items', editingItem);
+        await refreshState();
+        renderContent();
+    } else {
+        addItemToTopic('note', content, '', color, comment);
+    }
+    
+    editingItem = null;
 };
 
 // --- Drag & Drop Content ---
