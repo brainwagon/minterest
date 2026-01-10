@@ -136,6 +136,7 @@ main#app {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 1rem;
     align-items: start;
+    position: relative; /* For insertion marker positioning context if needed, though we usually attach to card */
 }
 
 .masonry {
@@ -165,12 +166,65 @@ main#app {
     position: relative;
     border: 1px solid rgba(0,0,0,0.05);
     transform: rotate(var(--rotation, 0deg));
+    /* Native DnD */
+    user-select: none;
+    -webkit-user-drag: element;
 }
 
 .card:hover {
     transform: translateY(-4px) rotate(var(--rotation, 0deg));
     box-shadow: 0 8px 16px rgba(0,0,0,0.12);
     z-index: 5;
+}
+
+.card.dragging {
+    opacity: 0.4;
+    cursor: grabbing;
+}
+
+/* Insertion Marker (Vertical Bar) */
+.insertion-marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    background-color: #007bff;
+    border-radius: 3px;
+    z-index: 99999;
+    pointer-events: none;
+    display: none;
+    box-shadow: 0 0 10px rgba(0, 123, 255, 0.8);
+    transition: left 0.1s ease-out, top 0.1s ease-out;
+}
+
+/* Drag Target Highlight (Breadcrumbs/Nav) */
+.drag-over-target {
+    box-shadow: 0 0 0 4px var(--accent-color) !important;
+    transform: scale(1.02) !important;
+    z-index: 20 !important;
+}
+.crumb.drag-over-target {
+    color: var(--accent-color);
+    text-decoration: underline;
+    background: #e6002322;
+    border-radius: 4px;
+}
+
+/* Explicit Drop Overlay inside cards (for nesting) */
+.card-drop-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 50; 
+    display: none;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    background: rgba(255, 255, 255, 0.4);
+    border: 6px solid var(--accent-color);
+    border-radius: var(--border-radius);
 }
 
 /* Post-it Note Style */

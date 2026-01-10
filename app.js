@@ -1,4 +1,3 @@
-import Sortable from 'https://esm.sh/sortablejs@1.15.0';
 import { openDB, deleteDB } from 'https://esm.sh/idb@7.1.1';
 import Peer from 'https://esm.sh/peerjs@1.5.4?bundle-deps';
 import QRCode from 'https://esm.sh/qrcode@1.5.3';
@@ -8,6 +7,17 @@ import JSZip from 'https://esm.sh/jszip@3.10.1';
 const DB_NAME = 'minterest-db';
 const DB_VERSION = 2;
 const STORAGE_KEY_OLD = 'minterest_data'; // For migration
+
+// --- Drag & Drop State ---
+let dragState = {
+    draggedId: null,
+    draggedType: null,
+    draggedElement: null,
+    targetId: null,
+    targetType: null, // 'nest' or 'reorder'
+    dropPosition: null // 'before' or 'after' (for reorder)
+};
+let insertionMarker = null;
 
 // --- Database & State ---
 let db;
@@ -175,6 +185,25 @@ function renderBreadcrumbs(topicId) {
     if (!container) return; // In case I missed adding it back to the single view
     container.innerHTML = '';
     
+    // Helper for breadcrumb drops
+    const attachDrop = (el, targetId) => {
+        el.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            el.classList.add('drag-over-target');
+        });
+        el.addEventListener('dragleave', () => el.classList.remove('drag-over-target'));
+        el.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            el.classList.remove('drag-over-target');
+            const itemId = e.dataTransfer.getData('application/minterest-id');
+            const type = e.dataTransfer.getData('application/minterest-type');
+            if (itemId && type) {
+                await moveToTopic(itemId, type, targetId);
+            }
+        });
+    };
+    
     const path = [];
     if (topicId) {
         let curr = state.topics.find(t => t.id === topicId);
@@ -189,6 +218,7 @@ function renderBreadcrumbs(topicId) {
     home.className = 'crumb';
     home.textContent = 'Home';
     home.onclick = navigateToDashboard;
+    attachDrop(home, null); // Drop to root
     container.appendChild(home);
     
     path.forEach((t, index) => {
@@ -200,6 +230,9 @@ function renderBreadcrumbs(topicId) {
         const crumb = document.createElement('span');
         crumb.className = 'crumb';
         crumb.textContent = t.name;
+        
+        attachDrop(crumb, t.id);
+
         if (index === path.length - 1) {
             crumb.classList.add('active');
         } else {
@@ -213,10 +246,17 @@ function renderBreadcrumbs(topicId) {
     if (path.length > 0) {
         btnBack.classList.remove('hidden');
         const current = path[path.length - 1];
+        
+        // Re-clone to remove old listeners if any (simple way to reset)
+        const newBtn = btnBack.cloneNode(true);
+        btnBack.parentNode.replaceChild(newBtn, btnBack);
+        
+        attachDrop(newBtn, current.parentId || null);
+
         if (current.parentId) {
-            btnBack.onclick = () => navigateToBoard(current.parentId);
+            newBtn.onclick = () => navigateToBoard(current.parentId);
         } else {
-            btnBack.onclick = navigateToDashboard;
+            newBtn.onclick = navigateToDashboard;
         }
     } else {
         btnBack.classList.add('hidden');
@@ -300,57 +340,295 @@ function renderContent() {
         grid.appendChild(card);
     });
 
-    initMixedSortable();
+    setupNativeDnD();
 }
 
-// --- Unified Sortable ---
-let sortableInstance = null;
-function initMixedSortable() {
+// --- Native Drag & Drop ---
+function setupNativeDnD() {
     const grid = document.getElementById('main-grid');
-    if (sortableInstance) sortableInstance.destroy();
+    
+    // Create/Ensure Insertion Marker
+    if (!insertionMarker) {
+        insertionMarker = document.createElement('div');
+        insertionMarker.className = 'insertion-marker';
+    }
+    
+    if (!grid.contains(insertionMarker)) {
+        grid.appendChild(insertionMarker);
+    }
 
-    sortableInstance = new Sortable(grid, {
-        animation: 150,
-        ghostClass: 'sortable-ghost',
-        draggable: '.card', // Both topics and items have .card class
-        onEnd: async () => {
-            // Get all children in DOM order
-            const els = Array.from(grid.querySelectorAll('.card'));
+    grid.removeEventListener('dragstart', handleDragStart); // Avoid duplicates
+    grid.removeEventListener('dragover', handleDragOver);
+    grid.removeEventListener('dragleave', handleDragLeave);
+    grid.removeEventListener('drop', handleDrop);
+    grid.removeEventListener('dragend', handleDragEnd);
+
+    grid.addEventListener('dragstart', handleDragStart);
+    grid.addEventListener('dragover', handleDragOver);
+    grid.addEventListener('dragleave', handleDragLeave);
+    grid.addEventListener('drop', handleDrop);
+    grid.addEventListener('dragend', handleDragEnd);
+}
+
+function handleDragStart(e) {
+    const card = e.target.closest('.card');
+    if (!card) return;
+
+    dragState.draggedId = card.dataset.id;
+    dragState.draggedType = card.dataset.type;
+    dragState.draggedElement = card;
+
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('application/minterest-id', card.dataset.id);
+    e.dataTransfer.setData('application/minterest-type', card.dataset.type);
+
+    // Delay adding class so visual drag image is taken normally
+    setTimeout(() => card.classList.add('dragging'), 0);
+    
+    // Enable drop overlays on all topic cards
+    document.querySelectorAll('.topic-card .card-drop-overlay').forEach(el => {
+        el.style.display = 'flex';
+    });
+}
+
+function handleDragOver(e) {
+    e.preventDefault(); // Allow drop
+    e.dataTransfer.dropEffect = 'move';
+
+    let targetCard = e.target.closest('.card');
+    
+    // If hovering over grid gap, find closest card
+    if (!targetCard) {
+        targetCard = getClosestCard(e.clientX, e.clientY);
+    }
+
+    if (!targetCard || targetCard === dragState.draggedElement) {
+        clearVisuals();
+        return;
+    }
+
+    const rect = targetCard.getBoundingClientRect();
+    const mouseX = e.clientX;
+    const mouseY = e.clientY;
+
+    // Check for Nesting (Center of Topic Card)
+    if (targetCard.classList.contains('topic-card') && targetCard.dataset.id !== dragState.draggedId) {
+        // Inner 50% (Increase reorder margin to 25%)
+        const marginX = rect.width * 0.25;
+        const marginY = rect.height * 0.25;
+        
+        if (
+            mouseX > rect.left + marginX &&
+            mouseX < rect.right - marginX &&
+            mouseY > rect.top + marginY &&
+            mouseY < rect.bottom - marginY
+        ) {
+            // We are in NEST zone
+            clearVisuals();
+            const overlay = targetCard.querySelector('.card-drop-overlay');
+            if (overlay) overlay.classList.add('drag-over-target');
             
-            const tx = db.transaction(['topics', 'items'], 'readwrite');
-            const promises = [];
+            dragState.targetId = targetCard.dataset.id;
+            dragState.targetType = 'nest';
+            return;
+        }
+    }
 
-            els.forEach((el, index) => {
-                const id = el.dataset.id;
-                const type = el.dataset.type; // 'topic' or 'item' - need to ensure create functions add this
-                
-                if (type === 'topic') {
-                    const topic = state.topics.find(t => t.id === id);
-                    if (topic && topic.order !== index) {
-                        topic.order = index;
-                        promises.push(tx.objectStore('topics').put(topic));
-                    }
-                } else if (type === 'item') {
-                    const item = state.items.find(i => i.id === id);
-                    if (item && item.order !== index) {
-                        item.order = index;
-                        promises.push(tx.objectStore('items').put(item));
-                    }
-                }
-            });
+    // Check for Reordering (Edges / Between Items)
+    // Decide based on left/right half for masonry grid (simplified)
+    const midX = rect.left + rect.width / 2;
+    
+    clearVisuals();
+    
+    // Gap size is 1rem (16px). Center of gap is roughly 8px from edge.
+    // We want the 6px marker centered in that 16px gap.
+    // Left gap center = offsetLeft - 8px. Marker left = offsetLeft - 8 - 3 = -11px relative to card?
+    // Let's rely on offsetLeft.
+    
+    if (mouseX < midX) {
+        // Left Side -> Insert Before
+        insertionMarker.style.display = 'block';
+        insertionMarker.style.height = rect.height + 'px';
+        insertionMarker.style.top = (targetCard.offsetTop) + 'px';
+        // Place in the middle of the left gutter (approx -8px from edge)
+        insertionMarker.style.left = (targetCard.offsetLeft - 11) + 'px'; 
+        
+        dragState.targetId = targetCard.dataset.id;
+        dragState.targetType = 'reorder';
+        dragState.dropPosition = 'before';
+    } else {
+        // Right Side -> Insert After
+        insertionMarker.style.display = 'block';
+        insertionMarker.style.height = rect.height + 'px';
+        insertionMarker.style.top = (targetCard.offsetTop) + 'px';
+        // Place in the middle of the right gutter (approx +8px from right edge)
+        insertionMarker.style.left = (targetCard.offsetLeft + rect.width + 5) + 'px';
+        
+        dragState.targetId = targetCard.dataset.id;
+        dragState.targetType = 'reorder';
+        dragState.dropPosition = 'after';
+    }
+}
 
-            await Promise.all(promises);
-            await tx.done;
-            await refreshState();
+function getClosestCard(x, y) {
+    const grid = document.getElementById('main-grid');
+    const cards = Array.from(grid.querySelectorAll('.card:not(.dragging)'));
+    
+    return cards.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        // Calculate distance from center of box to cursor
+        const centerX = box.left + box.width / 2;
+        const centerY = box.top + box.height / 2;
+        const dist = Math.hypot(x - centerX, y - centerY);
+        
+        if (dist < closest.dist) {
+            return { dist: dist, element: child };
+        } else {
+            return closest;
+        }
+    }, { dist: Number.POSITIVE_INFINITY }).element;
+}
+
+function handleDragLeave(e) {
+    // Basic cleanup if leaving the grid entirely, but tricky because dragleave fires when entering children
+    // Usually handled by dragover clearing visuals if target changes
+}
+
+async function handleDrop(e) {
+    e.preventDefault();
+    const draggedId = dragState.draggedId;
+    
+    if (!draggedId) return;
+
+    if (dragState.targetType === 'nest' && dragState.targetId) {
+        await moveToTopic(draggedId, dragState.draggedType, dragState.targetId);
+    } else if (dragState.targetType === 'reorder' && dragState.targetId) {
+        await reorderItem(draggedId, dragState.targetId, dragState.dropPosition);
+    }
+
+    handleDragEnd();
+}
+
+function handleDragEnd() {
+    if (dragState.draggedElement) {
+        dragState.draggedElement.classList.remove('dragging');
+    }
+    
+    clearVisuals();
+    
+    // Hide overlays
+    document.querySelectorAll('.topic-card .card-drop-overlay').forEach(el => {
+        el.style.display = 'none';
+    });
+
+    // Reset State
+    dragState = {
+        draggedId: null,
+        draggedType: null,
+        draggedElement: null,
+        targetId: null,
+        targetType: null,
+        dropPosition: null
+    };
+}
+
+function clearVisuals() {
+    if (insertionMarker) insertionMarker.style.display = 'none';
+    document.querySelectorAll('.drag-over-target').forEach(el => el.classList.remove('drag-over-target'));
+}
+
+async function moveToTopic(itemId, type, targetTopicId) {
+    // Cycle Check
+    if (type === 'topic') {
+        let curr = state.topics.find(t => t.id === targetTopicId);
+        while (curr) {
+            if (curr.id === itemId) {
+                alert("Cannot move a topic into its own sub-topic!");
+                return;
+            }
+            curr = state.topics.find(t => t.id === curr.parentId);
+        }
+    }
+    
+    // Prevent moving into self (if item is topic)
+    if (itemId === targetTopicId) return;
+
+    const tx = db.transaction(['topics', 'items'], 'readwrite');
+    
+    if (type === 'topic') {
+        const topic = await tx.objectStore('topics').get(itemId);
+        if (topic) {
+            topic.parentId = targetTopicId;
+            topic.order = 999999; 
+            await tx.objectStore('topics').put(topic);
+        }
+    } else {
+        const item = await tx.objectStore('items').get(itemId);
+        if (item) {
+            item.topicId = targetTopicId;
+            item.order = 999999;
+            await tx.objectStore('items').put(item);
+        }
+    }
+
+    await tx.done;
+    await refreshState();
+    renderContent();
+}
+
+async function reorderItem(draggedId, targetId, position) {
+    // 1. Get List of current items in view (sorted by order)
+    const grid = document.getElementById('main-grid');
+    const cards = Array.from(grid.querySelectorAll('.card'));
+    const currentOrder = cards.map(c => c.dataset.id);
+    
+    // 2. Calculate new order
+    const fromIndex = currentOrder.indexOf(draggedId);
+    let toIndex = currentOrder.indexOf(targetId);
+    
+    if (position === 'after') toIndex++;
+    
+    // Adjust if moving downwards
+    if (fromIndex < toIndex) toIndex--;
+    
+    if (fromIndex === toIndex) return;
+    
+    // 3. Move in Array
+    const newOrderIds = [...currentOrder];
+    newOrderIds.splice(fromIndex, 1);
+    newOrderIds.splice(toIndex, 0, draggedId);
+    
+    // 4. Update DB Orders
+    const tx = db.transaction(['topics', 'items'], 'readwrite');
+    const promises = [];
+    
+    newOrderIds.forEach((id, index) => {
+        // Find in state (fast)
+        let obj = state.topics.find(t => t.id === id);
+        let store = 'topics';
+        if (!obj) {
+            obj = state.items.find(i => i.id === id);
+            store = 'items';
+        }
+        
+        if (obj && obj.order !== index) {
+            obj.order = index;
+            promises.push(tx.objectStore(store).put(obj));
         }
     });
+    
+    await Promise.all(promises);
+    await tx.done;
+    await refreshState();
+    renderContent();
 }
 
 function createTopicCard(topic) {
     const el = document.createElement('div');
     el.className = 'card topic-card';
+    el.draggable = true; // Native DnD
     el.dataset.id = topic.id; 
-    el.dataset.type = 'topic'; // For Sortable
+    el.dataset.type = 'topic'; 
     el.textContent = topic.name;
     
     // Apply color if present, else default accent
@@ -363,6 +641,11 @@ function createTopicCard(topic) {
     }
 
     el.onclick = () => navigateToBoard(topic.id);
+    
+    // Explicit Drop Overlay (Visual Only, Logic in Grid Delegate)
+    const dropOverlay = document.createElement('div');
+    dropOverlay.className = 'card-drop-overlay';
+    el.appendChild(dropOverlay);
     
     // Actions Container
     const actions = document.createElement('div');
@@ -399,8 +682,9 @@ function createTopicCard(topic) {
 function createItemCard(item) {
     const card = document.createElement('div');
     card.className = 'card';
+    card.draggable = true; // Native DnD
     card.dataset.id = item.id;
-    card.dataset.type = 'item'; // For Sortable
+    card.dataset.type = 'item'; 
 
     let contentHtml = '';
     if (item.type === 'image') {
