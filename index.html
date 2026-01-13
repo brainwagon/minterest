@@ -48,6 +48,10 @@
                     <p id="view-description" style="margin: 0; color: #666;"></p>
                 </div>
                 <div class="board-actions">
+                    <button id="btn-empty-bin" class="btn-secondary hidden" title="Permanently Delete All Items">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        Empty Bin
+                    </button>
                     <button id="btn-edit-topic" class="btn-secondary hidden" title="Edit Topic Details">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                         Edit
@@ -70,6 +74,7 @@
             <div id="main-grid" class="grid masonry">
                 <!-- Mixed content will be rendered here -->
             </div>
+            <div id="special-topics-grid" style="margin-top: 2rem; display: none; justify-content: flex-end; gap: 1rem;"></div>
         </section>
     </main>
 
@@ -227,6 +232,21 @@
             
             <button id="btn-close-sync" class="btn-secondary" style="margin-top: 1rem; width: 100%;">Close</button>
         </div>
+    </dialog>
+
+    <!-- Dialog for Expiration -->
+    <dialog id="dlg-expiration">
+        <form method="dialog">
+            <h3>Set Expiration</h3>
+            <p class="hint">When this time is reached, the item will be moved to the Recycle Bin.</p>
+            <input type="datetime-local" id="expiration-input">
+            
+            <div class="dialog-buttons">
+                <button type="button" id="btn-clear-expiration" class="btn-secondary" style="margin-right: auto; color: #d9534f;">Remove Expiration</button>
+                <button type="button" id="btn-cancel-expiration">Cancel</button>
+                <button type="submit" id="btn-confirm-expiration" class="btn-primary">Save</button>
+            </div>
+        </form>
     </dialog>
 
     <script type="module" src="app.js"></script>
