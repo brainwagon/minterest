@@ -172,37 +172,26 @@
     <dialog id="dlg-edit-color">
         <form method="dialog">
             <h3>Pick a Color</h3>
+            
             <div style="margin-bottom: 1rem;">
-                <div id="edit-color-picker" style="display: flex; gap: 0.5rem; justify-content: center;">
-                    <label class="color-option">
-                        <input type="radio" name="edit-color" value="#e60023"> <!-- Red (Topic Default) -->
-                        <span class="color-swatch" style="background-color: #e60023;"></span>
-                    </label>
-                    <label class="color-option">
-                        <input type="radio" name="edit-color" value="#f86398">
-                        <span class="color-swatch" style="background-color: #f86398;"></span>
-                    </label>
-                    <label class="color-option">
-                        <input type="radio" name="edit-color" value="#e7ed43">
-                        <span class="color-swatch" style="background-color: #e7ed43;"></span>
-                    </label>
-                    <label class="color-option">
-                        <input type="radio" name="edit-color" value="#58d3d6">
-                        <span class="color-swatch" style="background-color: #58d3d6;"></span>
-                    </label>
-                    <label class="color-option">
-                        <input type="radio" name="edit-color" value="#fe8e45">
-                        <span class="color-swatch" style="background-color: #fe8e45;"></span>
-                    </label>
-                    <label class="color-option">
-                        <input type="radio" name="edit-color" value="#f8838a">
-                        <span class="color-swatch" style="background-color: #f8838a;"></span>
-                    </label>
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Palette:</label>
+                <div id="color-swatches" style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                    <!-- Dynamic Swatches will be injected here -->
                 </div>
             </div>
+
+            <div style="margin-bottom: 1rem; border-top: 1px solid #eee; padding-top: 1rem;">
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Custom Color:</label>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="color" id="custom-color-input" style="width: 50px; height: 40px; padding: 0; margin: 0; cursor: pointer;">
+                    <button type="button" id="btn-save-color" class="btn-secondary" title="Save this color to your palette">+</button>
+                    <span style="font-size: 0.8rem; color: #666;">Select a custom color</span>
+                </div>
+            </div>
+
             <div class="dialog-buttons">
                 <button type="button" id="btn-cancel-edit-color">Cancel</button>
-                <button type="submit" id="btn-confirm-edit-color" class="btn-primary">Save</button>
+                <button type="submit" id="btn-confirm-edit-color" class="btn-primary">Apply</button>
             </div>
         </form>
     </dialog>

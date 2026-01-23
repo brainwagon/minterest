@@ -9,6 +9,12 @@ const DB_VERSION = 2;
 const STORAGE_KEY_OLD = 'minterest_data'; // For migration
 const RECYCLE_BIN_ID = 'recycle-bin';
 
+const DEFAULT_PALETTE = [
+    '#e60023', '#f86398', '#e7ed43', '#58d3d6', 
+    '#fe8e45', '#f8838a', '#ffffff', '#000000', 
+    '#4a90e2', '#50e3c2', '#b8e986', '#bd10e0'
+];
+
 // --- Drag & Drop State ---
 let dragState = {
     draggedId: null,
@@ -117,7 +123,12 @@ function renderSpecialTopics() {
 
 // --- Database & State ---
 let db;
-let state = { topics: [], items: [], root: { name: 'My Topics', description: 'Main Board' } }; // Flat lists
+let state = { 
+    topics: [], 
+    items: [], 
+    root: { name: 'My Topics', description: 'Main Board' },
+    userPalette: []
+}; 
 
 // Initialize Database
 async function initDB() {
@@ -240,9 +251,12 @@ async function refreshState() {
         state.items = await db.getAll('items');
         
         let rootSettings = null;
+        let userPalette = [];
+
         if (db.objectStoreNames.contains('settings')) {
             try {
                 rootSettings = await db.get('settings', 'root');
+                userPalette = await db.get('settings', 'user_palette') || [];
             } catch (e) {
                 console.warn("Failed to fetch settings, ignoring:", e);
             }
@@ -253,6 +267,7 @@ async function refreshState() {
         } else {
             state.root = { name: 'My Topics', description: 'Main Board' };
         }
+        state.userPalette = userPalette.colors || []; // Assuming stored as { key: 'user_palette', colors: [] }
         
         updateStorageUsage();
     } catch (e) {
@@ -909,6 +924,11 @@ function createItemCard(item) {
     card.dataset.id = item.id;
     card.dataset.type = 'item'; 
 
+    // Apply User Color Override
+    if (item.color) {
+        card.style.background = item.color;
+    }
+
     let contentHtml = '';
     if (item.type === 'image') {
         contentHtml = `<img src="${item.content}" class="card-image" onerror="this.src='https://placehold.co/400x300?text=Image+Not+Found'">`;
@@ -945,9 +965,11 @@ function createItemCard(item) {
         }
         
         if (validUrl) {
-            const bgColor = getPastelColor(hostname);
+            // Use item.color if present, else pastel
+            const bgColor = item.color ? 'transparent' : getPastelColor(hostname);
+            
             contentHtml = `
-                <div class="link-preview" style="background-color: ${bgColor};
+                <div class="link-preview" style="background-color: ${bgColor};">
                 <img src="${faviconUrl}" class="link-favicon" onerror="this.style.display='none'">
                 <div class="link-domain">${hostname}</div>
             </div>
@@ -975,9 +997,7 @@ function createItemCard(item) {
 
     } else { // note
         card.classList.add('card-note');
-        if (item.color) {
-            card.style.background = item.color;
-        }
+        // Notes use background already set on card, but need rotation
         
         // Apply random rotation only for notes
         const rotation = (Math.random() * 16 - 8).toFixed(1); 
@@ -995,7 +1015,7 @@ function createItemCard(item) {
         <div class="card-actions">
             <button class="card-btn btn-expiration" title="Set Expiration" style="${item.expiresAt ? 'color: #d9534f;' : ''}">${ICONS.clock}</button>
             ${item.type === 'image' ? `<button class="card-btn btn-download" title="Download Image">${ICONS.download}</button>` : ''}
-            ${item.type === 'note' ? `<button class="card-btn btn-color" title="Change Color">${ICONS.palette}</button>` : ''}
+            <button class="card-btn btn-color" title="Change Color">${ICONS.palette}</button>
             <button class="card-btn btn-edit" title="Edit Comment">${ICONS.pencil}</button>
             <button class="card-btn btn-delete" title="Delete Item">${ICONS.trash}</button>
         </div>
@@ -1020,13 +1040,11 @@ function createItemCard(item) {
         };
     }
 
-    // Change Color Action (Note only)
-    if (item.type === 'note') {
-        card.querySelector('.btn-color').onclick = (e) => {
-            e.stopPropagation();
-            showEditColorDialog('item', item.id, item.color || '#fff740'); 
-        };
-    }
+    // Change Color Action (All types)
+    card.querySelector('.btn-color').onclick = (e) => {
+        e.stopPropagation();
+        showEditColorDialog('item', item.id, item.color || '#ffffff'); 
+    };
 
     // Edit Comment / Content Action
     card.querySelector('.btn-edit').onclick = async (e) => {
@@ -1863,29 +1881,83 @@ let currentEditTarget = null; // { type: 'topic'|'item', id: '...' }
 
 function showEditColorDialog(type, id, currentColor) {
     currentEditTarget = { type, id };
+    renderColorSwatches(currentColor);
     
-    // Select current color in picker
-    // Default to first if none matches
-    const inputs = document.querySelectorAll('input[name="edit-color"]');
-    let matched = false;
-    inputs.forEach(input => {
-        if (input.value === currentColor) {
-            input.checked = true;
-            matched = true;
-        }
-    });
-    if (!matched && inputs.length > 0) inputs[0].checked = true;
+    // Set custom picker to current color (or white if none)
+    const picker = document.getElementById('custom-color-input');
+    picker.value = currentColor && currentColor.startsWith('#') ? currentColor : '#ffffff';
+    
+    // Uncheck radios if using custom picker interaction
+    picker.oninput = () => {
+        document.querySelectorAll('input[name="edit-color"]').forEach(r => r.checked = false);
+    };
 
     dlgEditColor.showModal();
 }
+
+function renderColorSwatches(selectedColor) {
+    const container = document.getElementById('color-swatches');
+    container.innerHTML = '';
+    
+    // Combine defaults and user palette (unique)
+    const allColors = [...new Set([...DEFAULT_PALETTE, ...state.userPalette])];
+    
+    allColors.forEach(color => {
+        const label = document.createElement('label');
+        label.className = 'color-option';
+        
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = 'edit-color';
+        input.value = color;
+        if (color.toLowerCase() === (selectedColor || '').toLowerCase()) {
+            input.checked = true;
+        }
+        
+        // Update custom picker when swatch picked
+        input.onclick = () => {
+            document.getElementById('custom-color-input').value = color;
+        };
+        
+        const span = document.createElement('span');
+        span.className = 'color-swatch';
+        span.style.backgroundColor = color;
+        
+        label.appendChild(input);
+        label.appendChild(span);
+        container.appendChild(label);
+    });
+}
+
+document.getElementById('btn-save-color').onclick = async () => {
+    const picker = document.getElementById('custom-color-input');
+    const newColor = picker.value;
+    
+    // Add if not exists
+    if (!state.userPalette.includes(newColor) && !DEFAULT_PALETTE.includes(newColor)) {
+        state.userPalette.push(newColor);
+        
+        // Save to DB
+        try {
+            await db.put('settings', { key: 'user_palette', colors: state.userPalette });
+        } catch (e) {
+            console.error("Failed to save palette:", e);
+        }
+        
+        renderColorSwatches(newColor);
+    }
+};
 
 document.getElementById('btn-cancel-edit-color').onclick = () => dlgEditColor.close();
 
 dlgEditColor.onsubmit = async (e) => {
     if (!currentEditTarget) return;
 
-    const colorInput = document.querySelector('input[name="edit-color"]:checked');
-    const newColor = colorInput ? colorInput.value : null;
+    // Priority: Radio Selection -> Custom Input
+    const radio = document.querySelector('input[name="edit-color"]:checked');
+    const picker = document.getElementById('custom-color-input');
+    
+    const newColor = radio ? radio.value : picker.value;
 
     if (newColor) {
         const tx = db.transaction([currentEditTarget.type === 'topic' ? 'topics' : 'items'], 'readwrite');
