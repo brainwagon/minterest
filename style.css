@@ -1,11 +1,29 @@
 :root {
     --bg-color: #f8f9fa;
     --text-color: #212529;
+    --secondary-text: #888;
     --accent-color: #e60023; /* Pinterest Red */
     --card-bg: #ffffff;
+    --header-bg: #ffffff;
+    --border-color: #eee;
+    --drop-zone-bg: #fafafa;
+    --drop-zone-border: #ccc;
     --border-radius: 16px;
     --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     --header-height: 70px;
+}
+
+.dark-mode {
+    --bg-color: #121212;
+    --text-color: #e1e1e1;
+    --secondary-text: #a0a0a0;
+    --accent-color: #ff2d55;
+    --card-bg: #1e1e1e;
+    --header-bg: #181818;
+    --border-color: #333;
+    --drop-zone-bg: #252525;
+    --drop-zone-border: #444;
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
 * {
@@ -34,7 +52,7 @@ header {
     top: 0;
     width: 100%;
     height: var(--header-height);
-    background: white;
+    background: var(--header-bg);
     z-index: 100;
     box-shadow: 0 1px 0 rgba(0,0,0,0.1);
     display: flex;
@@ -68,7 +86,7 @@ header {
 #app-subtitle {
     font-size: 0.9rem;
     font-weight: 500;
-    color: #888;
+    color: var(--secondary-text);
     margin: 0;
     letter-spacing: 0.5px;
 }
@@ -105,13 +123,13 @@ main#app {
 
 /* Drop Zone */
 .drop-zone {
-    border: 2px dashed #ccc;
+    border: 2px dashed var(--drop-zone-border);
     border-radius: 24px;
     padding: 0.5rem 1.5rem;
-    color: #888;
+    color: var(--text-color);
     font-weight: 600;
     font-size: 0.9rem;
-    background: #fafafa;
+    background: var(--drop-zone-bg);
     transition: all 0.2s;
     display: flex;
     align-items: center;
@@ -149,9 +167,9 @@ main#app {
     grid-column: 1 / -1;
     text-align: center;
     padding: 4rem 2rem;
-    color: #888;
+    color: var(--text-color);
     background: rgba(0,0,0,0.02);
-    border: 2px dashed #ddd;
+    border: 2px dashed var(--border-color);
     border-radius: var(--border-radius);
 }
 
@@ -164,7 +182,7 @@ main#app {
     transition: transform 0.2s, box-shadow 0.2s;
     cursor: grab;
     position: relative;
-    border: 1px solid rgba(0,0,0,0.05);
+    border: 1px solid var(--border-color);
     transform: rotate(var(--rotation, 0deg));
     /* Native DnD */
     user-select: none;
@@ -371,9 +389,9 @@ button {
 .card-comment {
     margin-top: 0.8rem;
     padding-top: 0.8rem;
-    border-top: 1px solid #eee;
+    border-top: 1px solid var(--border-color);
     font-size: 0.9rem;
-    color: #555;
+    color: var(--secondary-text);
     font-style: italic;
     word-break: break-word;
 }
@@ -400,7 +418,9 @@ button {
     border: none;
     font-weight: 600;
     cursor: pointer;
-    transition: filter 0.2s;
+    transition: filter 0.2s, background-color 0.2s, color 0.2s;
+    background-color: var(--drop-zone-bg);
+    color: var(--text-color);
 }
 
 button:hover {
@@ -413,8 +433,8 @@ button:hover {
 }
 
 .btn-secondary {
-    background-color: #efefef;
-    color: black;
+    background-color: var(--drop-zone-bg);
+    color: var(--text-color);
 }
 
 /* Dialog */
@@ -424,6 +444,8 @@ dialog {
     padding: 2rem;
     box-shadow: 0 10px 25px rgba(0,0,0,0.2);
     width: 400px;
+    background: var(--card-bg);
+    color: var(--text-color);
 }
 
 dialog::backdrop {
@@ -515,9 +537,9 @@ dialog input {
     text-align: center;
     padding: 2rem;
     margin-top: auto;
-    color: #888;
+    color: var(--secondary-text);
     font-size: 0.9rem;
-    border-top: 1px solid #eee;
+    border-top: 1px solid var(--border-color);
 }
 
 .version-info {
@@ -586,8 +608,8 @@ dialog input {
     align-items: center;
     gap: 0.5rem;
     font-weight: 500;
-    color: #555;
-    background: #f0f0f0;
+    color: var(--text-color);
+    background: var(--drop-zone-bg);
     padding: 0.5rem 1rem;
     border-radius: 20px;
 }
@@ -619,4 +641,8 @@ dialog input {
     opacity: 0.5;
     pointer-events: none;
     transition: opacity 0.3s;
+}
+
+#view-description {
+    color: var(--secondary-text);
 }
