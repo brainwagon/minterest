@@ -17,10 +17,10 @@
     - [x] Implement toggle event handler in \`app.js\`
 - [x] **Task: Conductor - User Manual Verification 'UI Implementation' (Protocol in workflow.md)** 7a8f0a2
 
-## Phase 3: Persistence and Refinement
-- [ ] **Task: Save/Load Theme Preference**
-    - [ ] Write tests for theme persistence
-    - [ ] Update \`storage.js\` / \`app.js\` to handle theme setting in IndexedDB
-- [ ] **Task: Visual Polish and Icon Adaptation**
-    - [ ] Ensure all Heroicons and UI elements are optimized for dark mode
-- [ ] **Task: Conductor - User Manual Verification 'Persistence and Refinement' (Protocol in workflow.md)**
+## Phase 3: Persistence and Refinement [checkpoint: f742996]
+- [x] **Task: Save/Load Theme Preference**
+    - [x] Write tests for theme persistence
+    - [x] Update \`storage.js\` / \`app.js\` to handle theme setting in IndexedDB
+- [x] **Task: Visual Polish and Icon Adaptation**
+    - [x] Ensure all Heroicons and UI elements are optimized for dark mode
+- [x] **Task: Conductor - User Manual Verification 'Persistence and Refinement' (Protocol in workflow.md)** f742996
