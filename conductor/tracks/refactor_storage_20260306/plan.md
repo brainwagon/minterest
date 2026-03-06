@@ -2,7 +2,7 @@
 
 ## Phase 1: Baseline and Versioning
 - [x] **Task: Tag Current State as v1.0**
-- [ ] **Task: Update Project Version to v2.0.0-dev**
+- [x] **Task: Update Project Version to v2.0.0-dev** 25a9364
 - [ ] **Task: Conductor - User Manual Verification 'Baseline and Versioning' (Protocol in workflow.md)**
 
 ## Phase 2: Storage Layer Refactoring
