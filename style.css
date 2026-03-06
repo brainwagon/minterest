@@ -646,3 +646,11 @@ dialog input {
 #view-description {
     color: var(--secondary-text);
 }
+
+#btn-theme-toggle {
+    padding: 0.5rem;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    justify-content: center;
+}

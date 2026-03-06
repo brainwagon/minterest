@@ -1623,6 +1623,35 @@ window.addEventListener('paste', async (e) => {
     }
 });
 
+/**
+ * Applies the selected theme (light or dark) to the application.
+ * @param {boolean} isDark - Whether to apply the dark theme.
+ */
+function applyTheme(isDark) {
+    const body = document.body;
+    const btn = document.getElementById('btn-theme-toggle');
+    if (!btn) return;
+
+    const sunIcon = btn.querySelector('.sun-icon');
+    const moonIcon = btn.querySelector('.moon-icon');
+
+    if (isDark) {
+        body.classList.add('dark-mode');
+        sunIcon.classList.add('hidden');
+        moonIcon.classList.remove('hidden');
+    } else {
+        body.classList.remove('dark-mode');
+        sunIcon.classList.remove('hidden');
+        moonIcon.classList.add('hidden');
+    }
+}
+
+// --- Theme Toggle ---
+document.getElementById('btn-theme-toggle').onclick = () => {
+    const isDark = !document.body.classList.contains('dark-mode');
+    applyTheme(isDark);
+};
+
 // --- Backup & Restore (Updated for IndexedDB) ---
 document.getElementById('btn-export').onclick = async () => {
     const exportData = {
