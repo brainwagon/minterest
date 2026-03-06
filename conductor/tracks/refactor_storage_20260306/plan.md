@@ -19,7 +19,7 @@
     - [x] Write tests for the content loading logic
     - [x] Optimize the loading of cards for a topic
     - [x] Implement loading state indicators in the UI 8a596d6
-- [ ] **Task: Verify Masonry and Drag-and-Drop**
-    - [ ] Ensure SortableJS integration remains stable after refactoring
-    - [ ] Verify that reordering still works correctly
+- [x] **Task: Verify Masonry and Drag-and-Drop** 8a596d6
+    - [x] Ensure SortableJS integration remains stable after refactoring
+    - [x] Verify that reordering still works correctly 8a596d6
 - [ ] **Task: Conductor - User Manual Verification 'Content Loading Optimization' (Protocol in workflow.md)**
