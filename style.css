@@ -8,6 +8,8 @@
     --border-color: #eee;
     --drop-zone-bg: #fafafa;
     --drop-zone-border: #ccc;
+    --overlay-bg: rgba(255, 255, 255, 0.4);
+    --text-shadow: 0 1px 2px rgba(255,255,255,0.5);
     --border-radius: 16px;
     --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     --header-height: 70px;
@@ -23,6 +25,8 @@
     --border-color: #333;
     --drop-zone-bg: #252525;
     --drop-zone-border: #444;
+    --overlay-bg: rgba(0, 0, 0, 0.4);
+    --text-shadow: 0 1px 2px rgba(0,0,0,0.5);
     --shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
@@ -240,7 +244,7 @@ main#app {
     align-items: center;
     justify-content: center;
     pointer-events: none;
-    background: rgba(255, 255, 255, 0.4);
+    background: var(--overlay-bg);
     border: 6px solid var(--accent-color);
     border-radius: var(--border-radius);
 }
@@ -305,10 +309,10 @@ main#app {
 .link-domain {
     margin-top: 0.5rem;
     font-weight: 700;
-    color: rgba(0,0,0,0.7);
+    color: var(--text-color);
     font-size: 1.1rem;
     z-index: 2;
-    text-shadow: 0 1px 2px rgba(255,255,255,0.5);
+    text-shadow: var(--text-shadow);
 }
 
 .card-title {
@@ -320,7 +324,7 @@ main#app {
 
 .card-link {
     font-size: 0.85rem;
-    color: #666;
+    color: var(--secondary-text);
     text-decoration: none;
     display: block;
     margin-top: 0.5rem;
@@ -346,8 +350,8 @@ main#app {
 }
 
 .card-btn {
-    background: rgba(255,255,255,0.95);
-    border: 1px solid rgba(0,0,0,0.1);
+    background: var(--header-bg);
+    border: 1px solid var(--border-color);
     border-radius: 50%;
     width: 32px;
     height: 32px;
@@ -356,8 +360,8 @@ main#app {
     align-items: center;
     justify-content: center;
     padding: 0;
-    transition: background 0.2s;
-    color: #555; /* Icon color */
+    transition: background 0.2s, color 0.2s;
+    color: var(--secondary-text); /* Icon color */
 }
 
 .card-btn svg, .btn-icon svg {

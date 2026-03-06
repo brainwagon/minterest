@@ -224,11 +224,13 @@ async function refreshState() {
 
         let rootSettings = null;
         let userPalette = [];
+        let themeSetting = null;
 
         if (storage.db.objectStoreNames.contains('settings')) {
             try {
                 rootSettings = await storage.getSetting('root');
                 userPalette = await storage.getSetting('user_palette') || [];
+                themeSetting = await storage.getSetting('theme');
             } catch (e) {
                 console.warn("Failed to fetch settings, ignoring:", e);
             }
@@ -241,6 +243,14 @@ async function refreshState() {
         }
         state.userPalette = userPalette.colors || []; 
         
+        // Apply theme
+        if (themeSetting) {
+            applyTheme(themeSetting.isDark, false); // Don't re-save what we just loaded
+        } else {
+            // Default to system preference? For now just light mode
+            applyTheme(false, false);
+        }
+
         updateStorageUsage();
     } catch (e) {
         console.error("Fatal error in refreshState:", e);
@@ -1626,8 +1636,9 @@ window.addEventListener('paste', async (e) => {
 /**
  * Applies the selected theme (light or dark) to the application.
  * @param {boolean} isDark - Whether to apply the dark theme.
+ * @param {boolean} [save=true] - Whether to persist the setting to storage.
  */
-function applyTheme(isDark) {
+function applyTheme(isDark, save = true) {
     const body = document.body;
     const btn = document.getElementById('btn-theme-toggle');
     if (!btn) return;
@@ -1644,12 +1655,16 @@ function applyTheme(isDark) {
         sunIcon.classList.remove('hidden');
         moonIcon.classList.add('hidden');
     }
+
+    if (save) {
+        storage.putSetting('theme', { isDark });
+    }
 }
 
 // --- Theme Toggle ---
 document.getElementById('btn-theme-toggle').onclick = () => {
     const isDark = !document.body.classList.contains('dark-mode');
-    applyTheme(isDark);
+    applyTheme(isDark, true);
 };
 
 // --- Backup & Restore (Updated for IndexedDB) ---
