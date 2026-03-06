@@ -8,7 +8,3 @@ This file tracks all major tracks for the project. Each track has its own detail
   *Link: [./tracks/refactor_storage_20260306/](./tracks/refactor_storage_20260306/)*
 
 
----
-
-- [x] **Track: Implement the ability to shift between day and night modes.**
-*Link: [./tracks/day_night_mode_20260306/](./tracks/day_night_mode_20260306/)*
