@@ -1,7 +1,7 @@
 # Implementation Plan: refactor_storage_20260306
 
 ## Phase 1: Baseline and Versioning
-- [ ] **Task: Tag Current State as v1.0**
+- [x] **Task: Tag Current State as v1.0**
 - [ ] **Task: Update Project Version to v2.0.0-dev**
 - [ ] **Task: Conductor - User Manual Verification 'Baseline and Versioning' (Protocol in workflow.md)**
 
