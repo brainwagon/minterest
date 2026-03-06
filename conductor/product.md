@@ -21,6 +21,7 @@
 - **Visual Masonry Boards:** A drag-and-drop grid for arranging content visualy.
 - **Smart Content Handling:** Support for links (with auto-favicons/themes), image uploads/pastes (stored in IndexedDB), and text "Post-it" notes.
 - **Local-First Management:** Reordering via SortableJS, clipboard support for rapid collection, and backup/restore via JSON export.
+- **Day/Night Mode:** A theme toggle that allows users to switch between light and dark visual modes, with preferences persisted locally.
 
 ## Visual Aesthetic
 - **Minimalist & Content-Focused:** A clean, white-space heavy design using Vanilla CSS that prioritizes the user's content over the interface. The UI is unopinionated and stays out of the way.
