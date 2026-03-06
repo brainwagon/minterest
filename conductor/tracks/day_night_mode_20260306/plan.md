@@ -1,11 +1,11 @@
 # Implementation Plan: day_night_mode
 
-## Phase 1: CSS Infrastructure
-- [ ] **Task: Define Dark Mode Color Palette**
-- [ ] **Task: Implement CSS Variable Overrides**
-    - [ ] Create tests for theme variable application
-    - [ ] Add \`.dark-mode\` class rules to \`style.css\`
-- [ ] **Task: Conductor - User Manual Verification 'CSS Infrastructure' (Protocol in workflow.md)**
+## Phase 1: CSS Infrastructure [checkpoint: f70467b]
+- [x] **Task: Define Dark Mode Color Palette**
+- [x] **Task: Implement CSS Variable Overrides**
+    - [x] Create tests for theme variable application
+    - [x] Add \`.dark-mode\` class rules to \`style.css\`
+- [x] **Task: Conductor - User Manual Verification 'CSS Infrastructure' (Protocol in workflow.md)** f70467b
 
 ## Phase 2: UI Implementation
 - [ ] **Task: Create Theme Toggle Button**
