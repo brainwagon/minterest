@@ -1,12 +1,9 @@
-import { openDB, deleteDB } from 'https://esm.sh/idb@7.1.1';
+import { storage } from './storage.js';
 import Peer from 'https://esm.sh/peerjs@1.5.4?bundle-deps';
 import QRCode from 'https://esm.sh/qrcode@1.5.3';
 import JSZip from 'https://esm.sh/jszip@3.10.1';
 
 // --- Configuration ---
-const DB_NAME = 'minterest-db';
-const DB_VERSION = 2;
-const STORAGE_KEY_OLD = 'minterest_data'; // For migration
 const RECYCLE_BIN_ID = 'recycle-bin';
 
 const DEFAULT_PALETTE = [
@@ -31,7 +28,7 @@ async function emptyRecycleBin() {
         return;
     }
 
-    const tx = db.transaction(['topics', 'items'], 'readwrite');
+    const tx = storage.transaction(['topics', 'items'], 'readwrite');
     
     // 1. Delete all items in bin
     const items = await tx.objectStore('items').index('topicId').getAllKeys(RECYCLE_BIN_ID);
@@ -122,7 +119,6 @@ function renderSpecialTopics() {
 }
 
 // --- Database & State ---
-let db;
 let state = { 
     topics: [], 
     items: [], 
@@ -141,39 +137,7 @@ async function initDB() {
     );
 
     try {
-        // Race openDB against timeout
-        db = await Promise.race([
-            openDB(DB_NAME, DB_VERSION, {
-                upgrade(db, oldVersion, newVersion, transaction) {
-                    console.log(`Upgrading DB from ${oldVersion} to ${newVersion}`);
-                    if (!db.objectStoreNames.contains('topics')) {
-                        db.createObjectStore('topics', { keyPath: 'id' });
-                    }
-                    if (!db.objectStoreNames.contains('items')) {
-                        const itemStore = db.createObjectStore('items', { keyPath: 'id' });
-                        itemStore.createIndex('topicId', 'topicId');
-                    }
-                    if (!db.objectStoreNames.contains('settings')) {
-                        db.createObjectStore('settings', { keyPath: 'key' });
-                    }
-                },
-                blocked() {
-                    console.warn("DB Blocked");
-                    if (statusEl) statusEl.textContent = 'DB Blocked! Close other tabs.';
-                },
-                blocking() {
-                    console.warn("DB Blocking");
-                    db.close();
-                    if (statusEl) statusEl.textContent = 'DB Blocking upgrade. Reloading...';
-                    location.reload();
-                },
-                terminated() {
-                    console.error("DB Terminated");
-                    if (statusEl) statusEl.textContent = 'DB Connection Terminated.';
-                }
-            }),
-            timeout
-        ]);
+        await Promise.race([storage.init(), timeout]);
 
         if (statusEl) statusEl.textContent = 'Migrating...';
         await checkMigration();
@@ -187,17 +151,17 @@ async function initDB() {
     } catch (e) {
         console.error("Init failed:", e);
         if (statusEl) {
-            statusEl.innerHTML = `Error: ${e.message} <button id="btn-reset-db" style="font-size:0.7em; padding:2px 5px; margin-left:5px;">Reset App</button>`;
+            statusEl.innerHTML = `Error: ${e.message} <button id="btn-reset-app" style="font-size:0.7em; padding:2px 5px; margin-left:5px;">Reset App</button>`;
             
             // Add Reset Handler
             setTimeout(() => {
-                const btn = document.getElementById('btn-reset-db');
+                const btn = document.getElementById('btn-reset-app');
                 if (btn) {
                     btn.onclick = async () => {
                         if (confirm("This will DELETE ALL DATA to fix the corruption. Are you sure?")) {
                             statusEl.textContent = 'Deleting DB...';
                             try {
-                                await deleteDB(DB_NAME);
+                                await storage.delete();
                                 localStorage.clear();
                                 location.reload();
                             } catch (err) {
@@ -219,7 +183,7 @@ async function checkMigration() {
             const parsed = JSON.parse(oldData);
             console.log("Migrating data from localStorage to IndexedDB...", parsed);
             
-            const tx = db.transaction(['topics', 'items'], 'readwrite');
+            const tx = storage.db.transaction(['topics', 'items'], 'readwrite');
             
             for (const topic of parsed.topics) {
                 // Separate items from topic
@@ -247,16 +211,16 @@ async function checkMigration() {
 // Load data from DB into memory
 async function refreshState() {
     try {
-        state.topics = await db.getAll('topics');
-        state.items = await db.getAll('items');
+        state.topics = await storage.db.getAll('topics');
+        state.items = await storage.db.getAll('items');
         
         let rootSettings = null;
         let userPalette = [];
 
-        if (db.objectStoreNames.contains('settings')) {
+        if (storage.db.objectStoreNames.contains('settings')) {
             try {
-                rootSettings = await db.get('settings', 'root');
-                userPalette = await db.get('settings', 'user_palette') || [];
+                rootSettings = await storage.db.get('settings', 'root');
+                userPalette = await storage.db.get('settings', 'user_palette') || [];
             } catch (e) {
                 console.warn("Failed to fetch settings, ignoring:", e);
             }
@@ -471,7 +435,7 @@ async function checkExpiration(node, type) {
     if (Date.now() > expiry) {
         console.log(`Node ${node.id} expired. Moving to Recycle Bin.`);
         
-        const tx = db.transaction([type === 'topic' ? 'topics' : 'items'], 'readwrite');
+        const tx = storage.db.transaction([type === 'topic' ? 'topics' : 'items'], 'readwrite');
         const store = tx.objectStore(type === 'topic' ? 'topics' : 'items');
         
         const freshNode = await store.get(node.id);
@@ -779,7 +743,7 @@ async function moveToTopic(itemId, type, targetTopicId) {
     // Prevent moving into self (if item is topic)
     if (itemId === targetTopicId) return;
 
-    const tx = db.transaction(['topics', 'items'], 'readwrite');
+    const tx = storage.db.transaction(['topics', 'items'], 'readwrite');
     
     if (type === 'topic') {
         const topic = await tx.objectStore('topics').get(itemId);
@@ -825,7 +789,7 @@ async function reorderItem(draggedId, targetId, position) {
     newOrderIds.splice(toIndex, 0, draggedId);
     
     // 4. Update DB Orders
-    const tx = db.transaction(['topics', 'items'], 'readwrite');
+    const tx = storage.db.transaction(['topics', 'items'], 'readwrite');
     const promises = [];
     
     newOrderIds.forEach((id, index) => {
@@ -1067,7 +1031,7 @@ function createItemCard(item) {
             const newComment = prompt("Add a comment:", item.comment || "");
             if (newComment !== null) {
                 item.comment = newComment;
-                await db.put('items', item); 
+                await storage.db.put('items', item); 
                 await refreshState();
                 renderContent();
             }
@@ -1083,10 +1047,10 @@ function createItemCard(item) {
         
         if (confirm(msg)) {
             if (isPermanent) {
-                await db.delete('items', item.id);
+                await storage.db.delete('items', item.id);
             } else {
                 item.topicId = RECYCLE_BIN_ID;
-                await db.put('items', item);
+                await storage.db.put('items', item);
             }
             await refreshState();
             renderContent();
@@ -1117,8 +1081,8 @@ async function updateStorageUsage() {
         }
     } else {
         // Fallback for older browsers (approximate)
-        const topics = await db.getAll('topics');
-        const items = await db.getAll('items');
+        const topics = await storage.db.getAll('topics');
+        const items = await storage.db.getAll('items');
         const json = JSON.stringify({ topics, items });
         const bytes = new Blob([json]).size;
          let display = '';
@@ -1168,13 +1132,13 @@ async function addNewTopic(name, color = null, description = '', parentId = null
     const topic = { id, name, order, description, parentId };
     if (color) topic.color = color;
     
-    await db.add('topics', topic);
+    await storage.db.add('topics', topic);
     await refreshState();
     renderContent();
 }
 
 async function updateTopic(id, name, color, description) {
-    const tx = db.transaction('topics', 'readwrite');
+    const tx = storage.db.transaction('topics', 'readwrite');
     const topic = await tx.store.get(id);
     if (topic) {
         topic.name = name;
@@ -1203,7 +1167,7 @@ async function deleteTopic(id, forcePermanent = false) {
     // Soft Delete (Move to Bin)
     if (!forcePermanent && !inBin) {
         if (confirm(`Move topic "${topic.name}" to Recycle Bin?`)) {
-            const tx = db.transaction('topics', 'readwrite');
+            const tx = storage.db.transaction('topics', 'readwrite');
             const t = await tx.store.get(id);
             if (t) {
                 t.parentId = RECYCLE_BIN_ID;
@@ -1223,7 +1187,7 @@ async function deleteTopic(id, forcePermanent = false) {
     }
 
     // Recursive delete
-    const tx = db.transaction(['topics', 'items'], 'readwrite');
+    const tx = storage.db.transaction(['topics', 'items'], 'readwrite');
     
     async function deleteRecursive(topicId, tx) {
         await tx.objectStore('topics').delete(topicId);
@@ -1279,13 +1243,13 @@ async function addItemToTopic(type, content, title = '', color = null, comment =
         item.color = color;
     }
     
-    await db.add('items', item);
+    await storage.db.add('items', item);
     await refreshState();
     renderContent();
 
     if (type === 'link' && !title) {
         fetchTitle(content).then(async (fetchedTitle) => {
-            const tx = db.transaction('items', 'readwrite');
+            const tx = storage.db.transaction('items', 'readwrite');
             const freshItem = await tx.store.get(id);
             if (freshItem) {
                 if (fetchedTitle) {
@@ -1396,7 +1360,7 @@ dlgTopic.onsubmit = async (e) => {
             name: input.value, 
             description: descInput.value 
         };
-        await db.put('settings', newRoot);
+        await storage.db.put('settings', newRoot);
         await refreshState();
         updateView(); // Explicitly update view title
     } else if (editingTopicId) {
@@ -1439,7 +1403,7 @@ dlgNote.onsubmit = async (e) => {
         editingItem.comment = comment;
         editingItem.color = color;
         
-        await db.put('items', editingItem);
+        await storage.db.put('items', editingItem);
         await refreshState();
         renderContent();
     } else {
@@ -1664,8 +1628,8 @@ window.addEventListener('paste', async (e) => {
 // --- Backup & Restore (Updated for IndexedDB) ---
 document.getElementById('btn-export').onclick = async () => {
     const exportData = {
-        topics: await db.getAll('topics'),
-        items: await db.getAll('items')
+        topics: await storage.db.getAll('topics'),
+        items: await storage.db.getAll('items')
     };
     
     const dataStr = JSON.stringify(exportData, null, 2);
@@ -1693,13 +1657,13 @@ document.getElementById('import-file').onchange = (e) => {
             if (imported.topics && imported.items) {
                 
                 // Clear existing
-                const txClear = db.transaction(['topics', 'items'], 'readwrite');
+                const txClear = storage.db.transaction(['topics', 'items'], 'readwrite');
                 await txClear.objectStore('topics').clear();
                 await txClear.objectStore('items').clear();
                 await txClear.done;
                 
                 // Import new
-                const txImport = db.transaction(['topics', 'items'], 'readwrite');
+                const txImport = storage.db.transaction(['topics', 'items'], 'readwrite');
                 for (const t of imported.topics) await txImport.objectStore('topics').put(t); // Use put to overwrite if IDs exist
                 for (const i of imported.items) await txImport.objectStore('items').put(i);
                 await txImport.done;
@@ -1799,8 +1763,8 @@ function initHostMode() {
 }
 
 async function sendDataToPeer(conn) {
-    const topics = await db.getAll('topics');
-    const items = await db.getAll('items');
+    const topics = await storage.db.getAll('topics');
+    const items = await storage.db.getAll('items');
     
     // Simple Protocol: Send 1 big chunk for now (simpler for MVP)
     // PeerJS V1 handles binary chunking automatically for us.
@@ -1851,7 +1815,7 @@ document.getElementById('btn-connect').onclick = () => {
 };
 
 async function mergeData(data) {
-    const tx = db.transaction(['topics', 'items'], 'readwrite');
+    const tx = storage.db.transaction(['topics', 'items'], 'readwrite');
     
     // Simple Merge: Add missing. (Won't overwrite modified items with same ID, safer for now)
     // Ideally we'd compare timestamps.
@@ -1939,7 +1903,7 @@ document.getElementById('btn-save-color').onclick = async () => {
         
         // Save to DB
         try {
-            await db.put('settings', { key: 'user_palette', colors: state.userPalette });
+            await storage.db.put('settings', { key: 'user_palette', colors: state.userPalette });
         } catch (e) {
             console.error("Failed to save palette:", e);
         }
@@ -1960,7 +1924,7 @@ dlgEditColor.onsubmit = async (e) => {
     const newColor = radio ? radio.value : picker.value;
 
     if (newColor) {
-        const tx = db.transaction([currentEditTarget.type === 'topic' ? 'topics' : 'items'], 'readwrite');
+        const tx = storage.db.transaction([currentEditTarget.type === 'topic' ? 'topics' : 'items'], 'readwrite');
         const store = tx.objectStore(currentEditTarget.type === 'topic' ? 'topics' : 'items');
         
         const entity = await store.get(currentEditTarget.id);
@@ -2019,7 +1983,7 @@ dlgExpiration.onsubmit = async (e) => {
 };
 
 async function saveExpiration(isoDateString) {
-    const tx = db.transaction([expirationTarget.type === 'topic' ? 'topics' : 'items'], 'readwrite');
+    const tx = storage.db.transaction([expirationTarget.type === 'topic' ? 'topics' : 'items'], 'readwrite');
     const store = tx.objectStore(expirationTarget.type === 'topic' ? 'topics' : 'items');
     
     const entity = await store.get(expirationTarget.id);

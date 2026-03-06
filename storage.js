@@ -1,4 +1,4 @@
-import { openDB } from 'https://esm.sh/idb@7.1.1';
+import { openDB, deleteDB } from 'https://esm.sh/idb@7.1.1';
 
 const DB_NAME = 'minterest-db';
 const DB_VERSION = 2;
@@ -24,6 +24,14 @@ export const storage = {
             }
         });
         return this.db;
+    },
+
+    async delete() {
+        if (this.db) {
+            this.db.close();
+            this.db = null;
+        }
+        return deleteDB(DB_NAME);
     },
 
     // --- Topics ---
