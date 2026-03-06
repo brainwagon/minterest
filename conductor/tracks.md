@@ -7,3 +7,8 @@ This file tracks all major tracks for the project. Each track has its own detail
 - [x] **Track: Tag v1.0, move to v2.0, and refactor storage and content loading**
   *Link: [./tracks/refactor_storage_20260306/](./tracks/refactor_storage_20260306/)*
 
+
+---
+
+- [ ] **Track: Implement the ability to shift between day and night modes.**
+*Link: [./tracks/day_night_mode_20260306/](./tracks/day_night_mode_20260306/)*
