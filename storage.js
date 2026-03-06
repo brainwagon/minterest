@@ -21,6 +21,14 @@ export const storage = {
                 if (!db.objectStoreNames.contains('settings')) {
                     db.createObjectStore('settings', { keyPath: 'key' });
                 }
+            },
+            blocked() {
+                console.warn("DB Blocked");
+            },
+            blocking() {
+                console.warn("DB Blocking");
+                if (this.db) this.db.close();
+                location.reload();
             }
         });
         return this.db;

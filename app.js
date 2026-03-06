@@ -4,6 +4,7 @@ import QRCode from 'https://esm.sh/qrcode@1.5.3';
 import JSZip from 'https://esm.sh/jszip@3.10.1';
 
 // --- Configuration ---
+const STORAGE_KEY_OLD = 'minterest_data'; // For migration
 const RECYCLE_BIN_ID = 'recycle-bin';
 
 const DEFAULT_PALETTE = [
