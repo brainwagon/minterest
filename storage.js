@@ -1,7 +1,7 @@
 import { openDB, deleteDB } from 'https://esm.sh/idb@7.1.1';
 
 const DB_NAME = 'minterest-db';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export const storage = {
     db: null,
@@ -14,39 +14,39 @@ export const storage = {
                 if (!db.objectStoreNames.contains('topics')) {
                     const topicStore = db.createObjectStore('topics', { keyPath: 'id' });
                     topicStore.createIndex('parentId', 'parentId');
-                } else if (oldVersion < 3) {
+                } else if (oldVersion < 4) {
                     const topicStore = transaction.objectStore('topics');
                     if (!topicStore.indexNames.contains('parentId')) {
                         topicStore.createIndex('parentId', 'parentId');
                     }
                     // Migrate null/undefined to ""
-                    topicStore.openCursor().then(async function migrate(cursor) {
-                        while (cursor) {
-                            const topic = cursor.value;
-                            if (topic.parentId === null || topic.parentId === undefined) {
-                                topic.parentId = "";
-                                await cursor.update(topic);
-                            }
-                            cursor = await cursor.continue();
+                    // In idb, we can iterate using a cursor
+                    let cursorRequest = topicStore.openCursor();
+                    cursorRequest.then(function migrate(cursor) {
+                        if (!cursor) return;
+                        const topic = cursor.value;
+                        if (topic.parentId === null || topic.parentId === undefined) {
+                            topic.parentId = "";
+                            cursor.update(topic);
                         }
+                        cursor.continue().then(migrate);
                     });
                 }
                 
                 if (!db.objectStoreNames.contains('items')) {
                     const itemStore = db.createObjectStore('items', { keyPath: 'id' });
                     itemStore.createIndex('topicId', 'topicId');
-                } else if (oldVersion < 3) {
+                } else if (oldVersion < 4) {
                     const itemStore = transaction.objectStore('items');
-                    // Migrate null/undefined to ""
-                    itemStore.openCursor().then(async function migrate(cursor) {
-                        while (cursor) {
-                            const item = cursor.value;
-                            if (item.topicId === null || item.topicId === undefined) {
-                                item.topicId = "";
-                                await cursor.update(item);
-                            }
-                            cursor = await cursor.continue();
+                    let cursorRequest = itemStore.openCursor();
+                    cursorRequest.then(function migrate(cursor) {
+                        if (!cursor) return;
+                        const item = cursor.value;
+                        if (item.topicId === null || item.topicId === undefined) {
+                            item.topicId = "";
+                            cursor.update(item);
                         }
+                        cursor.continue().then(migrate);
                     });
                 }
 
