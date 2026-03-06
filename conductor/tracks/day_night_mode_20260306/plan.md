@@ -7,15 +7,15 @@
     - [x] Add \`.dark-mode\` class rules to \`style.css\`
 - [x] **Task: Conductor - User Manual Verification 'CSS Infrastructure' (Protocol in workflow.md)** f70467b
 
-## Phase 2: UI Implementation
-- [ ] **Task: Create Theme Toggle Button**
-    - [ ] Write unit tests for toggle component/logic
-    - [ ] Add toggle button to \`index.html\` header
-    - [ ] Style the toggle button in \`style.css\`
-- [ ] **Task: Implement Theme Switching Logic**
-    - [ ] Write tests for theme switching behavior
-    - [ ] Implement toggle event handler in \`app.js\`
-- [ ] **Task: Conductor - User Manual Verification 'UI Implementation' (Protocol in workflow.md)**
+## Phase 2: UI Implementation [checkpoint: 7a8f0a2]
+- [x] **Task: Create Theme Toggle Button**
+    - [x] Write unit tests for toggle component/logic
+    - [x] Add toggle button to \`index.html\` header
+    - [x] Style the toggle button in \`style.css\`
+- [x] **Task: Implement Theme Switching Logic**
+    - [x] Write tests for theme switching behavior
+    - [x] Implement toggle event handler in \`app.js\`
+- [x] **Task: Conductor - User Manual Verification 'UI Implementation' (Protocol in workflow.md)** 7a8f0a2
 
 ## Phase 3: Persistence and Refinement
 - [ ] **Task: Save/Load Theme Preference**
