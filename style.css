@@ -613,3 +613,10 @@ dialog input {
     color: #999;
     font-size: 0.9em;
 }
+
+/* Grid Loading State */
+.grid.loading {
+    opacity: 0.5;
+    pointer-events: none;
+    transition: opacity 0.3s;
+}

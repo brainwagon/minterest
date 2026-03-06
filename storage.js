@@ -1,7 +1,7 @@
 import { openDB, deleteDB } from 'https://esm.sh/idb@7.1.1';
 
 const DB_NAME = 'minterest-db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export const storage = {
     db: null,
@@ -12,12 +12,44 @@ export const storage = {
             upgrade(db, oldVersion, newVersion, transaction) {
                 console.log(`Upgrading DB from ${oldVersion} to ${newVersion}`);
                 if (!db.objectStoreNames.contains('topics')) {
-                    db.createObjectStore('topics', { keyPath: 'id' });
+                    const topicStore = db.createObjectStore('topics', { keyPath: 'id' });
+                    topicStore.createIndex('parentId', 'parentId');
+                } else if (oldVersion < 3) {
+                    const topicStore = transaction.objectStore('topics');
+                    if (!topicStore.indexNames.contains('parentId')) {
+                        topicStore.createIndex('parentId', 'parentId');
+                    }
+                    // Migrate null/undefined to ""
+                    topicStore.openCursor().then(async function migrate(cursor) {
+                        while (cursor) {
+                            const topic = cursor.value;
+                            if (topic.parentId === null || topic.parentId === undefined) {
+                                topic.parentId = "";
+                                await cursor.update(topic);
+                            }
+                            cursor = await cursor.continue();
+                        }
+                    });
                 }
+                
                 if (!db.objectStoreNames.contains('items')) {
                     const itemStore = db.createObjectStore('items', { keyPath: 'id' });
                     itemStore.createIndex('topicId', 'topicId');
+                } else if (oldVersion < 3) {
+                    const itemStore = transaction.objectStore('items');
+                    // Migrate null/undefined to ""
+                    itemStore.openCursor().then(async function migrate(cursor) {
+                        while (cursor) {
+                            const item = cursor.value;
+                            if (item.topicId === null || item.topicId === undefined) {
+                                item.topicId = "";
+                                await cursor.update(item);
+                            }
+                            cursor = await cursor.continue();
+                        }
+                    });
                 }
+
                 if (!db.objectStoreNames.contains('settings')) {
                     db.createObjectStore('settings', { keyPath: 'key' });
                 }
@@ -49,6 +81,22 @@ export const storage = {
 
     async getTopic(id) {
         return this.db.get('topics', id);
+    },
+
+    async getTopicsByParent(parentId) {
+        return this.db.getAllFromIndex('topics', 'parentId', parentId);
+    },
+
+    async getTopicPath(topicId) {
+        const path = [];
+        let currentId = topicId;
+        while (currentId) {
+            const topic = await this.getTopic(currentId);
+            if (!topic) break;
+            path.unshift(topic);
+            currentId = topic.parentId;
+        }
+        return path;
     },
 
     async addTopic(topic) {

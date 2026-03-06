@@ -212,16 +212,23 @@ async function checkMigration() {
 // Load data from DB into memory
 async function refreshState() {
     try {
-        state.topics = await storage.db.getAll('topics');
-        state.items = await storage.db.getAll('items');
+        // Optimized: Only load what is needed for current view
+        state.topics = await storage.getTopicsByParent(currentTopicId);
+        state.items = await storage.getItemsByTopic(currentTopicId);
         
+        if (currentTopicId && currentTopicId !== RECYCLE_BIN_ID) {
+            state.currentTopic = await storage.getTopic(currentTopicId);
+        } else {
+            state.currentTopic = null;
+        }
+
         let rootSettings = null;
         let userPalette = [];
 
         if (storage.db.objectStoreNames.contains('settings')) {
             try {
-                rootSettings = await storage.db.get('settings', 'root');
-                userPalette = await storage.db.get('settings', 'user_palette') || [];
+                rootSettings = await storage.getSetting('root');
+                userPalette = await storage.getSetting('user_palette') || [];
             } catch (e) {
                 console.warn("Failed to fetch settings, ignoring:", e);
             }
@@ -232,7 +239,7 @@ async function refreshState() {
         } else {
             state.root = { name: 'My Topics', description: 'Main Board' };
         }
-        state.userPalette = userPalette.colors || []; // Assuming stored as { key: 'user_palette', colors: [] }
+        state.userPalette = userPalette.colors || []; 
         
         updateStorageUsage();
     } catch (e) {
@@ -242,25 +249,23 @@ async function refreshState() {
 }
 
 // --- Navigation ---
-let currentTopicId = null;
+let currentTopicId = ""; // "" for Root
 let editingTopicId = null;
 let editingItem = null;
 
 function navigateToDashboard() {
-    currentTopicId = null;
     window.location.hash = '';
-    updateView();
 }
 
 function navigateToBoard(topicId) {
     window.location.hash = `topic/${topicId}`;
 }
 
-function renderBreadcrumbs(topicId) {
+async function renderBreadcrumbs(path) {
     const container = document.getElementById('breadcrumbs');
     if (!container) return; // In case I missed adding it back to the single view
     container.innerHTML = '';
-    
+
     // Helper for breadcrumb drops
     const attachDrop = (el, targetId) => {
         el.addEventListener('dragover', (e) => {
@@ -275,44 +280,29 @@ function renderBreadcrumbs(topicId) {
             const itemId = e.dataTransfer.getData('application/minterest-id');
             const type = e.dataTransfer.getData('application/minterest-type');
             if (itemId && type) {
-                await moveToTopic(itemId, type, targetId);
+                await moveToTopic(itemId, type, targetId || "");
             }
         });
     };
-    
-    const path = [];
-    if (topicId) {
-        let curr = null;
-        if (topicId === RECYCLE_BIN_ID) {
-             curr = { id: RECYCLE_BIN_ID, name: 'Recycle Bin', parentId: null };
-        } else {
-             curr = state.topics.find(t => t.id === topicId);
-        }
 
-        while (curr) {
-            path.unshift(curr);
-            curr = state.topics.find(t => t.id === curr.parentId);
-        }
-    }
-    
     // Home
     const home = document.createElement('span');
     home.className = 'crumb';
     home.textContent = 'Home';
     home.onclick = navigateToDashboard;
-    attachDrop(home, null); // Drop to root
+    attachDrop(home, ""); // Drop to root
     container.appendChild(home);
-    
+
     path.forEach((t, index) => {
         const sep = document.createElement('span');
         sep.className = 'crumb-sep';
         sep.textContent = '/';
         container.appendChild(sep);
-        
+
         const crumb = document.createElement('span');
         crumb.className = 'crumb';
         crumb.textContent = t.name;
-        
+
         attachDrop(crumb, t.id);
 
         if (index === path.length - 1) {
@@ -322,18 +312,18 @@ function renderBreadcrumbs(topicId) {
         }
         container.appendChild(crumb);
     });
-    
+
     // Update Back Button behavior
     const btnBack = document.getElementById('btn-dashboard');
     if (path.length > 0) {
         btnBack.classList.remove('hidden');
         const current = path[path.length - 1];
-        
+
         // Re-clone to remove old listeners if any (simple way to reset)
         const newBtn = btnBack.cloneNode(true);
         btnBack.parentNode.replaceChild(newBtn, btnBack);
-        
-        attachDrop(newBtn, current.parentId || null);
+
+        attachDrop(newBtn, current.parentId || "");
 
         if (current.parentId) {
             newBtn.onclick = () => navigateToBoard(current.parentId);
@@ -344,49 +334,55 @@ function renderBreadcrumbs(topicId) {
         btnBack.classList.add('hidden');
     }
 }
-
-function updateView() {
+async function updateView() {
     const hash = window.location.hash.substring(1);
-    
-    // Reset standard buttons visibility (assumed visible unless hidden logic applies)
+    const statusEl = document.getElementById('storage-usage');
+
+    // Reset standard buttons visibility
     document.getElementById('btn-add-topic').classList.remove('hidden');
     document.getElementById('btn-add-note').classList.remove('hidden');
     document.getElementById('drop-zone').classList.remove('hidden');
-    document.getElementById('btn-edit-topic').classList.add('hidden'); // Hidden by default, shown if valid topic
-    
+    document.getElementById('btn-edit-topic').classList.add('hidden');
+
     if (hash.startsWith('topic/')) {
-        const topicId = hash.split('/')[1];
-        
-        if (topicId === RECYCLE_BIN_ID) {
-            currentTopicId = topicId;
-            document.getElementById('view-title').textContent = 'Recycle Bin';
-            document.getElementById('view-description').textContent = 'Items here are pending permanent deletion.';
-            
-            // Hide Add Buttons in Bin
-            document.getElementById('btn-add-topic').classList.add('hidden');
-            document.getElementById('btn-add-note').classList.add('hidden');
-            document.getElementById('drop-zone').classList.add('hidden');
+        currentTopicId = hash.split('/')[1];
+    } else {
+        currentTopicId = "";
+    }
+
+    const grid = document.getElementById('main-grid');
+    if (grid) grid.classList.add('loading');
+    if (statusEl) statusEl.textContent = 'Loading...';
+    
+    await refreshState();
+
+    const path = await storage.getTopicPath(currentTopicId);
+
+    if (currentTopicId === RECYCLE_BIN_ID) {
+        document.getElementById('view-title').textContent = 'Recycle Bin';
+        document.getElementById('view-description').textContent = 'Items here are pending permanent deletion.';
+        document.getElementById('btn-add-topic').classList.add('hidden');
+        document.getElementById('btn-add-note').classList.add('hidden');
+        document.getElementById('drop-zone').classList.add('hidden');
+        path.push({ id: RECYCLE_BIN_ID, name: 'Recycle Bin', parentId: "" });
+    } else if (currentTopicId) {
+        const topic = state.currentTopic;
+        if (topic) {
+            document.getElementById('view-title').textContent = topic.name;
+            const descEl = document.getElementById('view-description');
+            if (descEl) descEl.textContent = topic.description || '';
+            document.getElementById('btn-edit-topic').classList.remove('hidden');
         } else {
-            const topic = state.topics.find(t => t.id === topicId);
-            if (topic) {
-                currentTopicId = topicId;
-                document.getElementById('view-title').textContent = topic.name;
-                const descEl = document.getElementById('view-description');
-                if (descEl) descEl.textContent = topic.description || '';
-                document.getElementById('btn-edit-topic').classList.remove('hidden');
-            } else {
-                 // Invalid topic, go home
-                 navigateToDashboard();
-                 return;
-            }
+            // Handle missing topic (maybe deleted?)
+            navigateToDashboard();
+            return;
         }
     } else {
-        currentTopicId = null;
         document.getElementById('view-title').textContent = state.root.name;
         document.getElementById('view-description').textContent = state.root.description;
         document.getElementById('btn-edit-topic').classList.remove('hidden');
     }
-    
+
     // Special Topics Grid Logic
     const specialGrid = document.getElementById('special-topics-grid');
     if (specialGrid) {
@@ -408,14 +404,13 @@ function updateView() {
             btnEmpty.classList.add('hidden');
         }
     }
-    
-    renderBreadcrumbs(currentTopicId);
-    // Initial render
-    renderContent();
-    // Scan for expirations immediately
-    scanCurrentView();
-}
 
+    await renderBreadcrumbs(path);
+    renderContent();
+    scanCurrentView();
+    if (grid) grid.classList.remove('loading');
+    if (statusEl) statusEl.textContent = 'Ready';
+}
 window.addEventListener('hashchange', updateView);
 
 // --- Rendering ---
@@ -465,23 +460,11 @@ async function scanCurrentView() {
 
     let changesMade = false;
 
-    // Get Topics in current view
-    const topics = state.topics.filter(t => {
-        if (!currentTopicId) return !t.parentId; 
-        return t.parentId === currentTopicId;
-    });
-
-    for (const t of topics) {
+    for (const t of state.topics) {
         if (await checkExpiration(t, 'topic')) changesMade = true;
     }
 
-    // Get Items in current view
-    const items = state.items.filter(i => {
-         if (!currentTopicId) return !i.topicId; 
-         return i.topicId === currentTopicId;
-    });
-
-    for (const i of items) {
+    for (const i of state.items) {
         if (await checkExpiration(i, 'item')) changesMade = true;
     }
 
@@ -498,19 +481,9 @@ function renderContent() {
     const grid = document.getElementById('main-grid');
     grid.innerHTML = '';
 
-    // Get Topics (where parentId matches)
-    // Note: root topics have parentId: null/undefined.
-    // currentTopicId is null for root.
-    const topics = state.topics.filter(t => {
-        if (!currentTopicId) return !t.parentId; // Root
-        return t.parentId === currentTopicId;
-    });
-
-    // Get Items (where topicId matches)
-    const items = state.items.filter(i => {
-         if (!currentTopicId) return !i.topicId; // Root items have null topicId
-         return i.topicId === currentTopicId;
-    });
+    // state.topics and state.items are already filtered by refreshState for the current view
+    const topics = state.topics;
+    const items = state.items;
 
     // Combine and Sort
     const content = [...topics.map(t => ({...t, _type: 'topic'})), ...items.map(i => ({...i, _type: 'item'}))];
@@ -1116,21 +1089,15 @@ function getPastelColor(str) {
 // --- Actions (Async) ---
 function getNextOrder(parentId) {
     // Count both topics and items in this parent
-    const topics = state.topics.filter(t => {
-        if (!parentId) return !t.parentId; // Root
-        return t.parentId === parentId;
-    });
-    const items = state.items.filter(i => {
-        if (!parentId) return !i.topicId; // Root items have null topicId
-        return i.topicId === parentId;
-    });
+    const topics = state.topics.filter(t => (t.parentId || "") === (parentId || ""));
+    const items = state.items.filter(i => (i.topicId || "") === (parentId || ""));
     return topics.length + items.length;
 }
 
-async function addNewTopic(name, color = null, description = '', parentId = null) {
+async function addNewTopic(name, color = null, description = '', parentId = "") {
     const id = crypto.randomUUID();
     const order = getNextOrder(parentId);
-    const topic = { id, name, order, description, parentId };
+    const topic = { id, name, order, description, parentId: parentId || "" };
     if (color) topic.color = color;
     
     await storage.db.add('topics', topic);
