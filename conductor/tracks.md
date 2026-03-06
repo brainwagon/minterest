@@ -6,3 +6,6 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 - [x] **Track: Tag v1.0, move to v2.0, and refactor storage and content loading**
   *Link: [./tracks/refactor_storage_20260306/](./tracks/refactor_storage_20260306/)*
+
+- [x] **Track: Fix backup import to sanitize parent/topic IDs and handle nested items**
+  *Link: [./tracks/fix_backup_import_20260306/](./tracks/fix_backup_import_20260306/)*

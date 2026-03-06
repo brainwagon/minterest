@@ -1,0 +1,8 @@
+{
+  "track_id": "fix_backup_import_20260306",
+  "type": "bug",
+  "status": "new",
+  "created_at": "2026-03-06T13:00:00Z",
+  "updated_at": "2026-03-06T13:00:00Z",
+  "description": "Fix backup import to sanitize parent/topic IDs (convert null to empty string) and ensure nested items are handled correctly."
+}

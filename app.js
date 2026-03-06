@@ -254,11 +254,20 @@ let editingTopicId = null;
 let editingItem = null;
 
 function navigateToDashboard() {
-    window.location.hash = '';
+    if (window.location.hash === '') {
+        updateView();
+    } else {
+        window.location.hash = '';
+    }
 }
 
 function navigateToBoard(topicId) {
-    window.location.hash = `topic/${topicId}`;
+    const newHash = `#topic/${topicId}`;
+    if (window.location.hash === newHash) {
+        updateView();
+    } else {
+        window.location.hash = newHash;
+    }
 }
 
 async function renderBreadcrumbs(path) {
@@ -1632,8 +1641,37 @@ document.getElementById('import-file').onchange = (e) => {
                 
                 // Import new
                 const txImport = storage.db.transaction(['topics', 'items'], 'readwrite');
-                for (const t of imported.topics) await txImport.objectStore('topics').put(t); // Use put to overwrite if IDs exist
-                for (const i of imported.items) await txImport.objectStore('items').put(i);
+                
+                // Sanitize and process topics
+                for (const t of imported.topics) {
+                    const { items: nestedItems, ...topicData } = t;
+                    
+                    // Sanitize parentId
+                    if (topicData.parentId === null || topicData.parentId === undefined) {
+                        topicData.parentId = "";
+                    }
+                    
+                    // Process nested items if they exist
+                    if (nestedItems && Array.isArray(nestedItems)) {
+                        for (const ni of nestedItems) {
+                            if (ni.topicId === null || ni.topicId === undefined) {
+                                ni.topicId = topicData.id;
+                            }
+                            await txImport.objectStore('items').put(ni);
+                        }
+                    }
+                    
+                    await txImport.objectStore('topics').put(topicData);
+                }
+
+                // Sanitize and process main items list
+                for (const i of imported.items) {
+                    if (i.topicId === null || i.topicId === undefined) {
+                        i.topicId = "";
+                    }
+                    await txImport.objectStore('items').put(i);
+                }
+                
                 await txImport.done;
 
                 await refreshState();
@@ -1784,23 +1822,30 @@ document.getElementById('btn-connect').onclick = () => {
 
 async function mergeData(data) {
     const tx = storage.db.transaction(['topics', 'items'], 'readwrite');
-    
+
     // Simple Merge: Add missing. (Won't overwrite modified items with same ID, safer for now)
     // Ideally we'd compare timestamps.
-    
+
     for (const t of data.topics) {
+        // Sanitize parentId
+        if (t.parentId === null || t.parentId === undefined) {
+            t.parentId = "";
+        }
         // IDB 'put' overwrites. Let's use it to ensure we get the latest version from the sender.
         // If we wanted "safe" merge, we'd use 'add' and ignore errors.
-        await tx.objectStore('topics').put(t); 
+        await tx.objectStore('topics').put(t);
     }
-    
+
     for (const i of data.items) {
+        // Sanitize topicId
+        if (i.topicId === null || i.topicId === undefined) {
+            i.topicId = "";
+        }
         await tx.objectStore('items').put(i);
     }
-    
+
     await tx.done;
 }
-
 // --- Init ---
 initDB().catch(e => {
     console.error("Initialization failed:", e);
