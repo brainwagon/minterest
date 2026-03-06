@@ -253,6 +253,9 @@ let currentTopicId = ""; // "" for Root
 let editingTopicId = null;
 let editingItem = null;
 
+/**
+ * Navigates to the main dashboard (root board).
+ */
 function navigateToDashboard() {
     if (window.location.hash === '') {
         updateView();
@@ -261,6 +264,10 @@ function navigateToDashboard() {
     }
 }
 
+/**
+ * Navigates to a specific topic board.
+ * @param {string} topicId - The ID of the topic to navigate to.
+ */
 function navigateToBoard(topicId) {
     const newHash = `#topic/${topicId}`;
     if (window.location.hash === newHash) {
@@ -270,12 +277,20 @@ function navigateToBoard(topicId) {
     }
 }
 
+/**
+ * Renders the breadcrumb navigation path.
+ * @param {Array<Object>} path - Array of topic objects representing the path from root.
+ */
 async function renderBreadcrumbs(path) {
     const container = document.getElementById('breadcrumbs');
-    if (!container) return; // In case I missed adding it back to the single view
+    if (!container) return; 
     container.innerHTML = '';
 
-    // Helper for breadcrumb drops
+    /**
+     * Attaches drag-and-drop listeners to a breadcrumb element.
+     * @param {HTMLElement} el 
+     * @param {string} targetId 
+     */
     const attachDrop = (el, targetId) => {
         el.addEventListener('dragover', (e) => {
             e.preventDefault();
@@ -343,6 +358,11 @@ async function renderBreadcrumbs(path) {
         btnBack.classList.add('hidden');
     }
 }
+
+/**
+ * Updates the application view based on the current URL hash.
+ * Fetches necessary data from storage and triggers rendering.
+ */
 async function updateView() {
     const hash = window.location.hash.substring(1);
     const statusEl = document.getElementById('storage-usage');
@@ -362,7 +382,7 @@ async function updateView() {
     const grid = document.getElementById('main-grid');
     if (grid) grid.classList.add('loading');
     if (statusEl) statusEl.textContent = 'Loading...';
-    
+
     await refreshState();
 
     const path = await storage.getTopicPath(currentTopicId);
@@ -420,6 +440,7 @@ async function updateView() {
     if (grid) grid.classList.remove('loading');
     if (statusEl) statusEl.textContent = 'Ready';
 }
+
 window.addEventListener('hashchange', updateView);
 
 // --- Rendering ---
@@ -1820,20 +1841,35 @@ document.getElementById('btn-connect').onclick = () => {
     });
 };
 
+/**
+ * Merges data received from a peer during P2P sync into the local database.
+ * Sanitizes IDs and handles nested items for compatibility.
+ * @param {Object} data - The data object containing topics and items arrays.
+ */
 async function mergeData(data) {
     const tx = storage.db.transaction(['topics', 'items'], 'readwrite');
 
-    // Simple Merge: Add missing. (Won't overwrite modified items with same ID, safer for now)
-    // Ideally we'd compare timestamps.
-
     for (const t of data.topics) {
+        const { items: nestedItems, ...topicData } = t;
+        
         // Sanitize parentId
-        if (t.parentId === null || t.parentId === undefined) {
-            t.parentId = "";
+        if (topicData.parentId === null || topicData.parentId === undefined) {
+            topicData.parentId = "";
         }
+        
+        // Process nested items if they exist
+        if (nestedItems && Array.isArray(nestedItems)) {
+            for (const ni of nestedItems) {
+                if (ni.topicId === null || ni.topicId === undefined) {
+                    ni.topicId = topicData.id;
+                }
+                await tx.objectStore('items').put(ni);
+            }
+        }
+        
         // IDB 'put' overwrites. Let's use it to ensure we get the latest version from the sender.
         // If we wanted "safe" merge, we'd use 'add' and ignore errors.
-        await tx.objectStore('topics').put(t);
+        await tx.objectStore('topics').put(topicData);
     }
 
     for (const i of data.items) {
