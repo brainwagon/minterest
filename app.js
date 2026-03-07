@@ -1693,51 +1693,10 @@ document.getElementById('import-file').onchange = (e) => {
         try {
             const imported = JSON.parse(event.target.result);
             if (imported.topics && imported.items) {
-                
-                // Clear existing
-                const txClear = storage.db.transaction(['topics', 'items'], 'readwrite');
-                await txClear.objectStore('topics').clear();
-                await txClear.objectStore('items').clear();
-                await txClear.done;
-                
-                // Import new
-                const txImport = storage.db.transaction(['topics', 'items'], 'readwrite');
-                
-                // Sanitize and process topics
-                for (const t of imported.topics) {
-                    const { items: nestedItems, ...topicData } = t;
-                    
-                    // Sanitize parentId
-                    if (topicData.parentId === null || topicData.parentId === undefined) {
-                        topicData.parentId = "";
-                    }
-                    
-                    // Process nested items if they exist
-                    if (nestedItems && Array.isArray(nestedItems)) {
-                        for (const ni of nestedItems) {
-                            if (ni.topicId === null || ni.topicId === undefined) {
-                                ni.topicId = topicData.id;
-                            }
-                            await txImport.objectStore('items').put(ni);
-                        }
-                    }
-                    
-                    await txImport.objectStore('topics').put(topicData);
-                }
-
-                // Sanitize and process main items list
-                for (const i of imported.items) {
-                    if (i.topicId === null || i.topicId === undefined) {
-                        i.topicId = "";
-                    }
-                    await txImport.objectStore('items').put(i);
-                }
-                
-                await txImport.done;
-
+                await mergeData(imported);
                 await refreshState();
                 navigateToDashboard();
-                alert("Backup restored successfully!");
+                alert("Backup merged successfully!");
             } else {
                 alert("Invalid backup file structure.");
             }
@@ -2259,41 +2218,24 @@ if (btnRemotePush) {
 }
 
 window.restoreRemoteBackup = async (id) => {
-    if (!confirm('This will overwrite all your local data with the selected backup. Are you sure?')) return;
+    if (!confirm('This will merge the selected backup with your local data. Are you sure?')) return;
     
     const url = getRemoteUrl();
     try {
-        showRemoteStatus('Restoring...');
+        showRemoteStatus('Merging...');
         const res = await fetch(`${url}/api/backups/${id}`, {
             headers: { 'Authorization': getRemoteAuth() }
         });
         
         if (!res.ok) {
              const data = await res.json();
-             return showRemoteStatus(data.error || 'Restore failed', true);
+             return showRemoteStatus(data.error || 'Merge failed', true);
         }
         
         const imported = await res.json();
         if (imported.topics && imported.items) {
-            const txClear = storage.db.transaction(['topics', 'items'], 'readwrite');
-            await txClear.objectStore('topics').clear();
-            await txClear.objectStore('items').clear();
-            await txClear.done;
-            
-            const txImport = storage.db.transaction(['topics', 'items'], 'readwrite');
-            for (const t of imported.topics) {
-                // Sanitize parentId
-                if (t.parentId === null || t.parentId === undefined) t.parentId = "";
-                await txImport.objectStore('topics').put(t);
-            }
-            for (const i of imported.items) {
-                // Sanitize topicId
-                if (i.topicId === null || i.topicId === undefined) i.topicId = "";
-                await txImport.objectStore('items').put(i);
-            }
-            await txImport.done;
-            
-            showRemoteStatus('Restored successfully! Reloading...');
+            await mergeData(imported);
+            showRemoteStatus('Merged successfully! Reloading...');
             setTimeout(() => location.reload(), 1000);
         } else {
             showRemoteStatus('Invalid backup format', true);
