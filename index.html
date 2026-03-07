@@ -22,14 +22,6 @@
                     Back
                 </button>
                 <div class="actions">
-                    <button id="btn-theme-toggle" title="Toggle Day/Night Mode">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" class="sun-icon">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M3 12h2.25m.386-6.364 1.591-1.591M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
-                        </svg>
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" class="moon-icon hidden">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
-                        </svg>
-                    </button>
                     <button id="btn-export" title="Backup to File">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                         Export
@@ -38,9 +30,21 @@
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
                         Import
                     </button>
+                    <button id="btn-remote-backup" title="minterestd Remote Backup">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" /></svg>
+                        Server
+                    </button>
                     <button id="btn-sync" title="P2P Sync">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
                         Sync
+                    </button>
+                    <button id="btn-theme-toggle" title="Toggle Day/Night Mode">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" class="sun-icon">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M3 12h2.25m.386-6.364 1.591-1.591M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+                        </svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" class="moon-icon hidden">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+                        </svg>
                     </button>
                     <input type="file" id="import-file" accept=".json" style="display: none;">
                 </div>
@@ -244,6 +248,46 @@
                 <button type="submit" id="btn-confirm-expiration" class="btn-primary">Save</button>
             </div>
         </form>
+    </dialog>
+
+    <!-- Dialog for Remote Backup -->
+    <dialog id="dlg-remote-backup">
+        <div class="sync-container" style="max-width: 400px;">
+            <h3>minterestd Server</h3>
+            <p class="hint" style="margin-bottom:1rem;">Backup to a remote server.</p>
+            
+            <div style="margin-bottom: 1rem;">
+                <label style="display:block; margin-bottom:0.5rem;">Server URL:</label>
+                <input type="text" id="remote-server-url" placeholder="http://localhost:5000" style="width:100%; padding:0.5rem; border-radius:4px; border:1px solid #ccc;">
+            </div>
+            
+            <div style="margin-bottom: 1rem; display:flex; gap:0.5rem;">
+                <div style="flex:1;">
+                    <label style="display:block; margin-bottom:0.5rem;">Username:</label>
+                    <input type="text" id="remote-username" style="width:100%; padding:0.5rem; border-radius:4px; border:1px solid #ccc;">
+                </div>
+                <div style="flex:1;">
+                    <label style="display:block; margin-bottom:0.5rem;">Password:</label>
+                    <input type="password" id="remote-password" style="width:100%; padding:0.5rem; border-radius:4px; border:1px solid #ccc;">
+                </div>
+            </div>
+
+            <div style="display:flex; gap:0.5rem; margin-bottom: 1rem;">
+                <button id="btn-remote-register" class="btn-secondary" style="flex:1;">Register</button>
+                <button id="btn-remote-login" class="btn-primary" style="flex:1;">List Backups</button>
+            </div>
+            
+            <div id="remote-status" class="status-box hidden" style="margin-bottom:1rem;"></div>
+            
+            <div id="remote-backups-container" class="hidden">
+                <h4 style="margin-bottom: 0.5rem; border-bottom: 1px solid #eee; padding-bottom: 0.25rem;">Your Backups</h4>
+                <ul id="remote-backups-list" style="list-style:none; padding:0; margin:0 0 1rem 0; max-height: 150px; overflow-y:auto;">
+                </ul>
+                <button id="btn-remote-push" class="btn-primary" style="width:100%;">Create New Backup</button>
+            </div>
+
+            <button id="btn-close-remote" class="btn-secondary" style="margin-top: 1rem; width: 100%;">Close</button>
+        </div>
     </dialog>
 
     <script type="module" src="app.js"></script>

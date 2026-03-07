@@ -1,0 +1,104 @@
+---
+- name: Deploy minterestd Backup Server
+  hosts: backup_servers
+  become: yes
+  vars:
+    ansible_python_interpreter: auto_silent
+    minterestd_user: minterestd
+    minterestd_dir: /opt/minterestd
+    minterestd_port: 5000
+    minterestd_max_backups: 5
+
+  tasks:
+    - name: Install system dependencies
+      apt:
+        name:
+          - python3
+          - python3-pip
+          - python3-venv
+          - sqlite3
+          - avahi-daemon
+          - libnss-mdns
+        state: present
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
+
+    - name: Ensure avahi-daemon is running
+      systemd:
+        name: avahi-daemon
+        state: started
+        enabled: yes
+      when: ansible_os_family == 'Debian'
+
+    - name: Create minterestd user
+      user:
+        name: "{{ minterestd_user }}"
+        system: yes
+        create_home: no
+
+    - name: Create application directory
+      file:
+        path: "{{ minterestd_dir }}"
+        state: directory
+        owner: "{{ minterestd_user }}"
+        group: "{{ minterestd_user }}"
+        mode: '0755'
+
+    - name: Copy application files
+      copy:
+        src: ../{{ item }}
+        dest: "{{ minterestd_dir }}/{{ item }}"
+        owner: "{{ minterestd_user }}"
+        group: "{{ minterestd_user }}"
+        mode: '0644'
+      loop:
+        - app.py
+        - requirements.txt
+
+    - name: Create Python virtual environment
+      command:
+        cmd: python3 -m venv {{ minterestd_dir }}/venv
+        creates: "{{ minterestd_dir }}/venv"
+
+    - name: Install Python dependencies
+      pip:
+        requirements: "{{ minterestd_dir }}/requirements.txt"
+        virtualenv: "{{ minterestd_dir }}/venv"
+
+    - name: Ensure database directory permissions
+      file:
+        path: "{{ minterestd_dir }}"
+        state: directory
+        owner: "{{ minterestd_user }}"
+        group: "{{ minterestd_user }}"
+
+    - name: Create systemd service file
+      copy:
+        dest: /etc/systemd/system/minterestd.service
+        content: |
+          [Unit]
+          Description=minterestd Backup Server
+          After=network.target
+
+          [Service]
+          User={{ minterestd_user }}
+          Group={{ minterestd_user }}
+          WorkingDirectory={{ minterestd_dir }}
+          Environment="MINTEREST_MAX_BACKUPS={{ minterestd_max_backups }}"
+          Environment="MINTEREST_BACKUP_DB={{ minterestd_dir }}/minterestd.db"
+          ExecStart={{ minterestd_dir }}/venv/bin/python app.py --port {{ minterestd_port }}
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable and start minterestd service
+      systemd:
+        name: minterestd
+        state: restarted
+        enabled: yes

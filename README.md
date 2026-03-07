@@ -14,6 +14,33 @@
 *   **Drag & Drop Reordering:** Arrange your cards exactly how you want them.
 *   **Clipboard Support:** Paste (Ctrl+V) text, links, or images directly onto your board.
 *   **Backup & Restore:** Export your entire database to a JSON file for safekeeping or to move to another device.
+*   **Remote Backup Server (minterestd):** Optionally deploy a private Python-based backup server to store your data securely on your own hardware.
+
+## Remote Backup Server (minterestd)
+
+For users who want to sync their boards across multiple devices or have a persistent off-device backup, **minterestd** is a lightweight Python companion server.
+
+### Features
+*   **User Accounts:** Register and login to your own private backup instance.
+*   **Automated Purging:** Configurable maximum number of backups per user (oldest are automatically deleted).
+*   **mDNS Support:** Automatically discoverable on your local network as `minterestd.local`.
+
+### Deployment via Ansible
+We provide an automated Ansible playbook to deploy `minterestd` to any Debian-based server (like a Raspberry Pi or a VPS).
+
+1.  **Configure Inventory:**
+    Edit `minterestd/ansible/inventory.ini` with your server's IP and username:
+    ```ini
+    [backup_servers]
+    192.168.1.xxx ansible_user=your_user
+    ```
+2.  **Run Playbook:**
+    ```bash
+    cd minterestd/ansible
+    ansible-playbook -i inventory.ini playbook.yml
+    ```
+3.  **Use in Minterest:**
+    Open Minterest, click the **"Server"** button, and enter your server's URL (e.g., `http://192.168.1.xxx:5000`).
 
 ## Usage
 

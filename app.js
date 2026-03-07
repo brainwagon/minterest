@@ -64,12 +64,8 @@ function renderSpecialTopics() {
     grid.innerHTML = '';
     
     const card = document.createElement('div');
-    card.className = 'card topic-card';
+    card.className = 'card topic-card recycle-card';
     card.dataset.id = RECYCLE_BIN_ID;
-    card.style.backgroundColor = 'transparent'; 
-    card.style.boxShadow = 'none';
-    card.style.border = '2px solid #ccc';
-    card.style.width = '200px'; 
     card.textContent = ''; // Explicitly clear any inherited text
     card.innerHTML = `
         <div style="pointer-events: none; text-align: center; display: flex; align-items: center; justify-content: center; height: 100%;">
@@ -2092,3 +2088,240 @@ async function saveExpiration(isoDateString) {
         renderContent();
     }
 }
+
+// --- Remote Backup Logic ---
+const dlgRemoteBackup = document.getElementById('dlg-remote-backup');
+const btnRemoteBackup = document.getElementById('btn-remote-backup');
+const btnCloseRemote = document.getElementById('btn-close-remote');
+const btnRemoteRegister = document.getElementById('btn-remote-register');
+const btnRemoteLogin = document.getElementById('btn-remote-login');
+const btnRemotePush = document.getElementById('btn-remote-push');
+const remoteStatus = document.getElementById('remote-status');
+const remoteBackupsContainer = document.getElementById('remote-backups-container');
+const remoteBackupsList = document.getElementById('remote-backups-list');
+
+if (btnRemoteBackup) {
+    btnRemoteBackup.onclick = () => {
+        const storedUrl = localStorage.getItem('minterestd_url') || '';
+        const storedUser = localStorage.getItem('minterestd_user') || '';
+        document.getElementById('remote-server-url').value = storedUrl;
+        document.getElementById('remote-username').value = storedUser;
+        document.getElementById('remote-password').value = '';
+        
+        remoteStatus.classList.add('hidden');
+        remoteBackupsContainer.classList.add('hidden');
+        dlgRemoteBackup.showModal();
+    };
+}
+
+if (btnCloseRemote) {
+    btnCloseRemote.onclick = () => dlgRemoteBackup.close();
+}
+
+function getRemoteAuth() {
+    const user = document.getElementById('remote-username').value;
+    const pass = document.getElementById('remote-password').value;
+    return 'Basic ' + btoa(user + ':' + pass);
+}
+
+function getRemoteUrl() {
+    let url = document.getElementById('remote-server-url').value.trim();
+    if (url.endsWith('/')) url = url.slice(0, -1);
+    localStorage.setItem('minterestd_url', url);
+    localStorage.setItem('minterestd_user', document.getElementById('remote-username').value);
+    return url;
+}
+
+function showRemoteStatus(msg, isError = false) {
+    remoteStatus.textContent = msg;
+    remoteStatus.classList.remove('hidden');
+    remoteStatus.style.color = isError ? '#d9534f' : '#4cae4c';
+}
+
+if (btnRemoteRegister) {
+    btnRemoteRegister.onclick = async () => {
+        const url = getRemoteUrl();
+        const user = document.getElementById('remote-username').value;
+        const pass = document.getElementById('remote-password').value;
+        
+        if (!url || !user || !pass) return showRemoteStatus('Please fill all fields', true);
+        
+        try {
+            showRemoteStatus('Registering...');
+            const res = await fetch(`${url}/api/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user, password: pass })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                showRemoteStatus('Registered successfully! You can now list backups.');
+            } else {
+                showRemoteStatus(data.error || 'Registration failed', true);
+            }
+        } catch (e) {
+            showRemoteStatus('Connection error: ' + e.message, true);
+        }
+    };
+}
+
+if (btnRemoteLogin) {
+    btnRemoteLogin.onclick = async () => {
+        const url = getRemoteUrl();
+        if (!url) return showRemoteStatus('Please provide server URL', true);
+        
+        try {
+            showRemoteStatus('Fetching backups...');
+            const res = await fetch(`${url}/api/backups`, {
+                headers: { 'Authorization': getRemoteAuth() }
+            });
+            
+            if (res.status === 401) {
+                return showRemoteStatus('Invalid credentials', true);
+            }
+            
+            const backups = await res.json();
+            if (res.ok) {
+                showRemoteStatus('');
+                remoteStatus.classList.add('hidden');
+                renderRemoteBackups(backups);
+            } else {
+                showRemoteStatus(backups.error || 'Failed to list backups', true);
+            }
+        } catch (e) {
+            showRemoteStatus('Connection error: ' + e.message, true);
+        }
+    };
+}
+
+function renderRemoteBackups(backups) {
+    remoteBackupsContainer.classList.remove('hidden');
+    remoteBackupsList.innerHTML = '';
+    
+    if (backups.length === 0) {
+        remoteBackupsList.innerHTML = '<li style="padding:0.5rem; text-align:center; color:#666;">No backups found</li>';
+        return;
+    }
+    
+    backups.forEach(b => {
+        const li = document.createElement('li');
+        li.style.display = 'flex';
+        li.style.justifyContent = 'space-between';
+        li.style.alignItems = 'center';
+        li.style.padding = '0.5rem 0';
+        li.style.borderBottom = '1px solid #eee';
+        
+        const date = new Date(b.timestamp).toLocaleString();
+        
+        li.innerHTML = `
+            <span style="font-size:0.9rem;">${date}</span>
+            <div>
+                <button class="btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" onclick="restoreRemoteBackup(${b.id})">Restore</button>
+                <button class="btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem; color:#d9534f;" onclick="deleteRemoteBackup(${b.id})">Delete</button>
+            </div>
+        `;
+        remoteBackupsList.appendChild(li);
+    });
+}
+
+if (btnRemotePush) {
+    btnRemotePush.onclick = async () => {
+        const url = getRemoteUrl();
+        if (!confirm('Create a new remote backup of your current data?')) return;
+        
+        try {
+            showRemoteStatus('Creating backup...');
+            const exportData = {
+                topics: await storage.db.getAll('topics'),
+                items: await storage.db.getAll('items')
+            };
+            
+            const res = await fetch(`${url}/api/backups`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': getRemoteAuth()
+                },
+                body: JSON.stringify(exportData)
+            });
+            
+            const data = await res.json();
+            if (res.ok) {
+                showRemoteStatus('Backup successful!');
+                btnRemoteLogin.click(); // Refresh list
+            } else {
+                showRemoteStatus(data.error || 'Backup failed', true);
+            }
+        } catch (e) {
+            showRemoteStatus('Connection error: ' + e.message, true);
+        }
+    };
+}
+
+window.restoreRemoteBackup = async (id) => {
+    if (!confirm('This will overwrite all your local data with the selected backup. Are you sure?')) return;
+    
+    const url = getRemoteUrl();
+    try {
+        showRemoteStatus('Restoring...');
+        const res = await fetch(`${url}/api/backups/${id}`, {
+            headers: { 'Authorization': getRemoteAuth() }
+        });
+        
+        if (!res.ok) {
+             const data = await res.json();
+             return showRemoteStatus(data.error || 'Restore failed', true);
+        }
+        
+        const imported = await res.json();
+        if (imported.topics && imported.items) {
+            const txClear = storage.db.transaction(['topics', 'items'], 'readwrite');
+            await txClear.objectStore('topics').clear();
+            await txClear.objectStore('items').clear();
+            await txClear.done;
+            
+            const txImport = storage.db.transaction(['topics', 'items'], 'readwrite');
+            for (const t of imported.topics) {
+                // Sanitize parentId
+                if (t.parentId === null || t.parentId === undefined) t.parentId = "";
+                await txImport.objectStore('topics').put(t);
+            }
+            for (const i of imported.items) {
+                // Sanitize topicId
+                if (i.topicId === null || i.topicId === undefined) i.topicId = "";
+                await txImport.objectStore('items').put(i);
+            }
+            await txImport.done;
+            
+            showRemoteStatus('Restored successfully! Reloading...');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showRemoteStatus('Invalid backup format', true);
+        }
+    } catch (e) {
+        showRemoteStatus('Connection error: ' + e.message, true);
+    }
+};
+
+window.deleteRemoteBackup = async (id) => {
+    if (!confirm('Delete this remote backup?')) return;
+    
+    const url = getRemoteUrl();
+    try {
+        showRemoteStatus('Deleting...');
+        const res = await fetch(`${url}/api/backups/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': getRemoteAuth() }
+        });
+        
+        if (!res.ok) {
+             const data = await res.json();
+             return showRemoteStatus(data.error || 'Delete failed', true);
+        }
+        
+        showRemoteStatus('Deleted successfully');
+        btnRemoteLogin.click(); // Refresh list
+    } catch (e) {
+        showRemoteStatus('Connection error: ' + e.message, true);
+    }
+};

@@ -658,3 +658,25 @@ dialog input {
     border-radius: 50%;
     justify-content: center;
 }
+
+.actions {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+/* Recycle Card Special Styling */
+.recycle-card {
+    background-color: transparent !important;
+    box-shadow: none !important;
+    border: 2px solid #ccc !important;
+    width: 200px !important;
+}
+
+.dark-mode .recycle-card {
+    border-color: var(--text-color) !important;
+}
+
+.dark-mode .recycle-card img {
+    filter: invert(1) brightness(2);
+}
