@@ -701,8 +701,10 @@ function handleDragLeave(e) {
 async function handleDrop(e) {
     e.preventDefault();
     const draggedId = dragState.draggedId;
-    
+
     if (!draggedId) return;
+
+    e.stopPropagation(); // Prevent bubbling to window drop handler.
 
     if (dragState.targetType === 'nest' && dragState.targetId) {
         await moveToTopic(draggedId, dragState.draggedType, dragState.targetId);
@@ -1579,10 +1581,13 @@ window.addEventListener('dragleave', () => {
 window.addEventListener('drop', async (e) => {
     if (dropZone.contains(e.target)) return;
 
+    // Ignore internal card reorder/nest drags — these carry our custom MIME type
+    // and are handled (with stopPropagation) by handleDrop on the grid.
+    if (e.dataTransfer.getData('application/minterest-id')) return;
+
     e.preventDefault();
     document.body.classList.remove('drag-over');
-    
-    // Ignore drops from SortableJS reordering (internal)
+
     handleDataTransfer(e.dataTransfer);
 });
 
