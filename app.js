@@ -1,4 +1,5 @@
 import { storage } from './storage.js';
+import { escapeHtml } from './utils.js';
 import Peer from 'https://esm.sh/peerjs@1.5.4?bundle-deps';
 import QRCode from 'https://esm.sh/qrcode@1.5.3';
 import JSZip from 'https://esm.sh/jszip@3.10.1';
@@ -35,23 +36,26 @@ async function emptyRecycleBin() {
     const items = await tx.objectStore('items').index('topicId').getAllKeys(RECYCLE_BIN_ID);
     await Promise.all(items.map(id => tx.objectStore('items').delete(id)));
     
-    // 2. Delete all topics in bin (recursively?)
+    // 2. Delete all topics in bin and their entire descendant trees.
     const allTopics = await tx.objectStore('topics').getAll();
     const binTopics = allTopics.filter(t => t.parentId === RECYCLE_BIN_ID);
-    
-    // We can't easily reuse recursive delete inside this transaction without restructuring, 
-    // so we'll just delete the top level ones here and let the user delete their children manually or 
-    // implement a simpler recursive delete here if needed.
-    // For now, let's just delete the top level topics in bin. 
-    // A better approach for a real app would be a proper recursive delete function that takes a transaction.
-    // But for this CLI task, I'll stick to flat delete of bin contents for topics to be safe against tx errors.
-    
-    await Promise.all(binTopics.map(t => tx.objectStore('topics').delete(t.id)));
+
+    async function deleteBinTopicRecursively(topicId, allTopicsSnapshot, transaction) {
+        const childItems = await transaction.objectStore('items')
+            .index('topicId').getAllKeys(topicId);
+        await Promise.all(childItems.map(id => transaction.objectStore('items').delete(id)));
+        const subTopics = allTopicsSnapshot.filter(t => t.parentId === topicId);
+        for (const sub of subTopics) {
+            await deleteBinTopicRecursively(sub.id, allTopicsSnapshot, transaction);
+        }
+        await transaction.objectStore('topics').delete(topicId);
+    }
+
+    for (const binTopic of binTopics) {
+        await deleteBinTopicRecursively(binTopic.id, allTopics, tx);
+    }
 
     await tx.done;
-    
-    // If there were sub-topics in those deleted topics, they are now orphans. 
-    // Ideally we should delete them too. Let's do a cleanup pass after.
     
     await refreshState();
     renderContent();
@@ -905,9 +909,9 @@ function createItemCard(item) {
 
     let contentHtml = '';
     if (item.type === 'image') {
-        contentHtml = `<img src="${item.content}" class="card-image" onerror="this.src='https://placehold.co/400x300?text=Image+Not+Found'">`;
+        contentHtml = `<img src="${escapeHtml(item.content)}" class="card-image" onerror="this.src='https://placehold.co/400x300?text=Image+Not+Found'">`;
         if (item.comment) {
-             contentHtml += `<div class="card-content"><div class="card-comment">${item.comment}</div></div>`;
+             contentHtml += `<div class="card-content"><div class="card-comment">${escapeHtml(item.comment)}</div></div>`;
         }
         // Open full image on click
         card.onclick = () => {
@@ -916,7 +920,7 @@ function createItemCard(item) {
                 <html>
                     <head><title>Image View</title></head>
                     <body style="margin:0; display:flex; justify-content:center; align-items:center; background:#111; height:100vh;">
-                        <img src="${item.content}" style="max-width:100%; max-height:100%; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
+                        <img src="${escapeHtml(item.content)}" style="max-width:100%; max-height:100%; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
                     </body>
                 </html>
             `);
@@ -927,7 +931,7 @@ function createItemCard(item) {
         let hostname = 'Link';
         let faviconUrl = '';
         let validUrl = false;
-        
+
         try {
             const url = new URL(item.content);
             hostname = url.hostname;
@@ -937,30 +941,30 @@ function createItemCard(item) {
         } catch (e) {
             console.warn('Invalid URL:', item.content);
         }
-        
+
         if (validUrl) {
             // Use item.color if present, else pastel
             const bgColor = item.color ? 'transparent' : getPastelColor(hostname);
-            
+
             contentHtml = `
                 <div class="link-preview" style="background-color: ${bgColor};">
                 <img src="${faviconUrl}" class="link-favicon" onerror="this.style.display='none'">
-                <div class="link-domain">${hostname}</div>
+                <div class="link-domain">${escapeHtml(hostname)}</div>
             </div>
             <div class="card-content">
-                <div class="card-title">${item.title || hostname}</div>
-                <a href="${item.content}" target="_blank" class="card-link">${item.content}</a>
-                ${item.comment ? `<div class="card-comment">${item.comment}</div>` : ''}
+                <div class="card-title">${escapeHtml(item.title || hostname)}</div>
+                <a href="${escapeHtml(item.content)}" target="_blank" class="card-link">${escapeHtml(item.content)}</a>
+                ${item.comment ? `<div class="card-comment">${escapeHtml(item.comment)}</div>` : ''}
             </div>`;
         } else {
              contentHtml = `
             <div class="card-content">
                 <div class="card-title">Broken Link</div>
-                <p class="card-link">${item.content}</p>
-                ${item.comment ? `<div class="card-comment">${item.comment}</div>` : ''}
+                <p class="card-link">${escapeHtml(item.content)}</p>
+                ${item.comment ? `<div class="card-comment">${escapeHtml(item.comment)}</div>` : ''}
             </div>`;
         }
-        
+
         // Make entire card clickable for links
         card.style.cursor = 'pointer';
         card.onclick = (e) => {
@@ -972,15 +976,15 @@ function createItemCard(item) {
     } else { // note
         card.classList.add('card-note');
         // Notes use background already set on card, but need rotation
-        
+
         // Apply random rotation only for notes
-        const rotation = (Math.random() * 16 - 8).toFixed(1); 
+        const rotation = (Math.random() * 16 - 8).toFixed(1);
         card.style.setProperty('--rotation', `${rotation}deg`);
 
         contentHtml = `
             <div class="card-content">
-                <div class="card-title">${item.content}</div>
-                ${item.comment ? `<div class="card-comment">${item.comment}</div>` : ''}
+                <div class="card-title">${escapeHtml(item.content)}</div>
+                ${item.comment ? `<div class="card-comment">${escapeHtml(item.comment)}</div>` : ''}
             </div>`;
     }
 
@@ -1200,8 +1204,8 @@ async function deleteTopic(id, forcePermanent = false) {
         const items = await tx.objectStore('items').index('topicId').getAllKeys(topicId);
         await Promise.all(items.map(itemId => tx.objectStore('items').delete(itemId)));
         
-        // Find Sub-topics (in memory)
-        const subTopics = state.topics.filter(t => t.parentId === topicId);
+        // Find Sub-topics by querying the index directly (not stale in-memory state).
+        const subTopics = await tx.objectStore('topics').index('parentId').getAll(topicId);
         for (const sub of subTopics) {
             await deleteRecursive(sub.id, tx);
         }
@@ -1322,7 +1326,7 @@ if (btnEditTopic) {
         let color = '#e60023';
 
         if (currentTopicId) {
-            const topic = state.topics.find(t => t.id === currentTopicId);
+            const topic = state.currentTopic;
             if (!topic) return;
             editingTopicId = currentTopicId;
             name = topic.name;

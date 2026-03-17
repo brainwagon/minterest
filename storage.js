@@ -1,5 +1,31 @@
 import { openDB, deleteDB } from 'https://esm.sh/idb@7.1.1';
 
+/**
+ * Migrates null/undefined parentId (topics) and topicId (items) to "".
+ * Must be called with an active readwrite transaction covering both stores.
+ * Exported for testing.
+ * @param {IDBTransaction} tx
+ * @returns {Promise<void>}
+ */
+export async function migrateNullIds(tx) {
+  const topicStore = tx.objectStore('topics');
+  const topics = await topicStore.getAll();
+  for (const t of topics) {
+    if (t.parentId === null || t.parentId === undefined) {
+      t.parentId = '';
+      await topicStore.put(t);
+    }
+  }
+  const itemStore = tx.objectStore('items');
+  const items = await itemStore.getAll();
+  for (const i of items) {
+    if (i.topicId === null || i.topicId === undefined) {
+      i.topicId = '';
+      await itemStore.put(i);
+    }
+  }
+}
+
 const DB_NAME = 'minterest-db';
 const DB_VERSION = 5;
 
@@ -39,7 +65,7 @@ export const storage = {
   async init() {
     if (this.db) return this.db;
     this.db = await openDB(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion, newVersion, transaction) {
+      async upgrade(db, oldVersion, newVersion, transaction) {
         console.log(`Upgrading DB from ${oldVersion} to ${newVersion}`);
         if (!db.objectStoreNames.contains('topics')) {
           const topicStore = db.createObjectStore('topics', { keyPath: 'id' });
@@ -49,34 +75,22 @@ export const storage = {
           if (!topicStore.indexNames.contains('parentId')) {
             topicStore.createIndex('parentId', 'parentId');
           }
-          // Migrate null/undefined to ""
-          topicStore.getAll().then(topics => {
-            topics.forEach(t => {
-              if (t.parentId === null || t.parentId === undefined) {
-                t.parentId = "";
-                topicStore.put(t);
-              }
-            });
-          });
         }
 
         if (!db.objectStoreNames.contains('items')) {
           const itemStore = db.createObjectStore('items', { keyPath: 'id' });
           itemStore.createIndex('topicId', 'topicId');
-        } else if (oldVersion < 5) {
-          const itemStore = transaction.objectStore('items');
-          itemStore.getAll().then(items => {
-            items.forEach(i => {
-              if (i.topicId === null || i.topicId === undefined) {
-                i.topicId = "";
-                itemStore.put(i);
-              }
-            });
-          });
         }
 
         if (!db.objectStoreNames.contains('settings')) {
           db.createObjectStore('settings', { keyPath: 'key' });
+        }
+
+        // Migrate null/undefined parentId and topicId to "" (Bug 2 fix).
+        // Must run after all stores/indexes are created so the transaction
+        // covers all required stores. Using await keeps the transaction open.
+        if (oldVersion < 5) {
+          await migrateNullIds(transaction);
         }
       },
       blocked() {
