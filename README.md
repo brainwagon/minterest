@@ -52,6 +52,7 @@ We provide an automated Ansible playbook to deploy `minterestd` to any Debian-ba
 ### Managing Topics
 *   Click **"+ New Topic"** on the dashboard to start a new collection.
 *   Click a topic card to enter that board.
+*   Use the **Pencil Icon** on a topic to rename it or change its color.
 *   Use the **Trash Icon** on a topic to delete it (and all its contents).
 
 ### Adding Content

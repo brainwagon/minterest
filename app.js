@@ -879,6 +879,16 @@ function createTopicCard(topic) {
         e.stopPropagation();
         showEditColorDialog('topic', topic.id, topic.color || '#e60023');
     };
+
+    // Edit Button
+    const editBtn = document.createElement('button');
+    editBtn.className = 'card-btn';
+    editBtn.title = "Edit Topic";
+    editBtn.innerHTML = ICONS.pencil;
+    editBtn.onclick = (e) => {
+        e.stopPropagation();
+        showEditTopicDialog(topic);
+    };
     
     // Delete Button
     const delBtn = document.createElement('button');
@@ -892,6 +902,7 @@ function createTopicCard(topic) {
     
     actions.appendChild(clockBtn);
     actions.appendChild(colorBtn);
+    actions.appendChild(editBtn);
     actions.appendChild(delBtn);
     el.appendChild(actions);
     return el;
@@ -1297,6 +1308,42 @@ async function fetchTitle(url) {
     return null;
 }
 
+function showEditTopicDialog(topicOrId) {
+    let name = '';
+    let description = '';
+    let color = '#e60023';
+    let title = '';
+
+    if (topicOrId === 'root' || !topicOrId) {
+        editingTopicId = 'root';
+        name = state.root.name;
+        description = state.root.description;
+        title = 'Edit Dashboard';
+    } else {
+        const topic = typeof topicOrId === 'string' 
+            ? (state.topics.find(t => t.id === topicOrId) || state.currentTopic) 
+            : topicOrId;
+            
+        if (!topic) return;
+        editingTopicId = topic.id;
+        name = topic.name;
+        description = topic.description || '';
+        color = topic.color || '#e60023';
+        title = 'Edit Topic';
+    }
+
+    document.querySelector('#dlg-topic h3').textContent = title;
+    btnConfirmTopic.textContent = 'Save Changes';
+
+    document.getElementById('topic-name-input').value = name;
+    document.getElementById('topic-desc-input').value = description;
+    
+    const colorInput = document.querySelector(`input[name="topic-color"][value="${color}"]`);
+    if (colorInput) colorInput.checked = true;
+
+    dlgTopic.showModal();
+}
+
 // --- Event Listeners ---
 document.getElementById('app-logo').onclick = navigateToDashboard;
 // btn-dashboard removed (handled by breadcrumbs/view logic)
@@ -1323,36 +1370,7 @@ document.getElementById('btn-add-topic').onclick = () => {
 const btnEditTopic = document.getElementById('btn-edit-topic');
 if (btnEditTopic) {
     btnEditTopic.onclick = () => {
-        let name = '';
-        let description = '';
-        let color = '#e60023';
-
-        if (currentTopicId) {
-            const topic = state.currentTopic;
-            if (!topic) return;
-            editingTopicId = currentTopicId;
-            name = topic.name;
-            description = topic.description || '';
-            color = topic.color || '#e60023';
-        } else {
-            // Root
-            editingTopicId = 'root';
-            name = state.root.name;
-            description = state.root.description;
-            // Root doesn't really have a color card, but we can keep the picker for consistency or hide it.
-            // Let's keep it to simple.
-        }
-
-        document.querySelector('#dlg-topic h3').textContent = currentTopicId ? 'Edit Topic' : 'Edit Dashboard';
-        btnConfirmTopic.textContent = 'Save Changes';
-
-        document.getElementById('topic-name-input').value = name;
-        document.getElementById('topic-desc-input').value = description;
-        
-        const colorInput = document.querySelector(`input[name="topic-color"][value="${color}"]`);
-        if (colorInput) colorInput.checked = true;
-
-        dlgTopic.showModal();
+        showEditTopicDialog(currentTopicId || 'root');
     };
 }
 
