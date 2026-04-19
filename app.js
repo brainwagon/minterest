@@ -460,7 +460,8 @@ const ICONS = {
     pencil: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>`,
     download: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>`,
     palette: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>`,
-    clock: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`
+    clock: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
+    moveUp: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9l3-3m0 0l3 3m-3-3v10M5 21h14" /></svg>`
 };
 
 // --- Expiration Logic ---
@@ -890,6 +891,21 @@ function createTopicCard(topic) {
         showEditTopicDialog(topic);
     };
     
+    // Move Up Button
+    const moveUpBtn = document.createElement('button');
+    moveUpBtn.className = 'card-btn';
+    moveUpBtn.title = 'Move up one level';
+    moveUpBtn.innerHTML = ICONS.moveUp;
+    if (currentTopicId === '') {
+        moveUpBtn.disabled = true;
+        moveUpBtn.style.opacity = '0.3';
+    }
+    moveUpBtn.onclick = async (e) => {
+        e.stopPropagation();
+        const grandparentId = state.currentTopic ? state.currentTopic.parentId : '';
+        await moveToTopic(topic.id, 'topic', grandparentId);
+    };
+
     // Delete Button
     const delBtn = document.createElement('button');
     delBtn.className = 'card-btn';
@@ -899,10 +915,11 @@ function createTopicCard(topic) {
         e.stopPropagation();
         await deleteTopic(topic.id);
     };
-    
+
     actions.appendChild(clockBtn);
     actions.appendChild(colorBtn);
     actions.appendChild(editBtn);
+    actions.appendChild(moveUpBtn);
     actions.appendChild(delBtn);
     el.appendChild(actions);
     return el;
@@ -1267,46 +1284,8 @@ async function addItemToTopic(type, content, title = '', color = null, comment =
     await storage.db.add('items', item);
     await refreshState();
     renderContent();
-
-    if (type === 'link' && !title) {
-        fetchTitle(content).then(async (fetchedTitle) => {
-            const tx = storage.db.transaction('items', 'readwrite');
-            const freshItem = await tx.store.get(id);
-            if (freshItem) {
-                if (fetchedTitle) {
-                    freshItem.title = fetchedTitle;
-                } else {
-                    try {
-                        const url = new URL(freshItem.content);
-                        freshItem.title = url.hostname;
-                    } catch(e) {
-                        freshItem.title = "Link";
-                    }
-                }
-                await tx.store.put(freshItem);
-                await tx.done;
-                await refreshState();
-                renderContent();
-            }
-        });
-    }
 }
 
-async function fetchTitle(url) {
-    try {
-        const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
-        if (!response.ok) throw new Error(`Proxy error: ${response.status}`);
-        const data = await response.json();
-        if (data.contents) {
-            const doc = new DOMParser().parseFromString(data.contents, "text/html");
-            const title = doc.title;
-            return title || null;
-        }
-    } catch (e) {
-        console.warn("Failed to fetch page title:", e);
-    }
-    return null;
-}
 
 function showEditTopicDialog(topicOrId) {
     let name = '';

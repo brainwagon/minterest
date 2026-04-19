@@ -3,7 +3,7 @@ import json
 import sqlite3
 import argparse
 from datetime import datetime
-from flask import Flask, request, jsonify, g
+from flask import Flask, request, jsonify, g, render_template_string
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
@@ -72,11 +72,64 @@ def after_request(response):
 
 @app.route('/')
 def index():
-    return jsonify({
-        'status': 'minterestd is running',
-        'version': '1.0.0',
-        'endpoints': ['/api/register', '/api/backups']
-    })
+    db = get_db()
+    user_count = db.execute('SELECT count(*) as count FROM users').fetchone()['count']
+    backup_count = db.execute('SELECT count(*) as count FROM backups').fetchone()['count']
+    return render_template_string('''<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>minterestd</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f0f0f; color: #e0e0e0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 2.5rem 3rem; max-width: 420px; width: 100%; }
+    .status { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.5rem; }
+    .dot { width: 10px; height: 10px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 8px #22c55e; }
+    h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; }
+    h1 span { color: #6366f1; }
+    .meta { color: #666; font-size: 0.8rem; margin-top: 0.25rem; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 2rem 0; }
+    .stat { background: #111; border: 1px solid #222; border-radius: 8px; padding: 1rem; }
+    .stat-value { font-size: 2rem; font-weight: 700; color: #6366f1; }
+    .stat-label { font-size: 0.75rem; color: #666; margin-top: 0.2rem; }
+    .endpoints { border-top: 1px solid #222; padding-top: 1.5rem; }
+    .endpoints h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: #555; margin-bottom: 0.75rem; }
+    .endpoint { font-family: monospace; font-size: 0.85rem; color: #a5b4fc; padding: 0.3rem 0; }
+    .method { color: #4ade80; margin-right: 0.5rem; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="status">
+      <div class="dot"></div>
+      <div>
+        <h1>minterest<span>d</span></h1>
+        <div class="meta">backup server &mdash; v1.0.0</div>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-value">{{ user_count }}</div>
+        <div class="stat-label">registered users</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">{{ backup_count }}</div>
+        <div class="stat-label">stored backups</div>
+      </div>
+    </div>
+    <div class="endpoints">
+      <h2>API Endpoints</h2>
+      <div class="endpoint"><span class="method">POST</span>/api/register</div>
+      <div class="endpoint"><span class="method">GET</span>/api/backups</div>
+      <div class="endpoint"><span class="method">POST</span>/api/backups</div>
+      <div class="endpoint"><span class="method">GET</span>/api/backups/:id</div>
+      <div class="endpoint"><span class="method">DELETE</span>/api/backups/:id</div>
+    </div>
+  </div>
+</body>
+</html>''', user_count=user_count, backup_count=backup_count)
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -105,12 +158,22 @@ def list_backups():
     ).fetchall()
     return jsonify([dict(b) for b in backups])
 
+MAX_BACKUP_BYTES = 1 * 1024 * 1024 * 1024  # 1 GB
+
 @app.route('/api/backups', methods=['POST'])
 @requires_auth
 def create_backup():
+    content_length = request.content_length
+    if content_length is not None and content_length > MAX_BACKUP_BYTES:
+        return jsonify({'error': 'Backup exceeds maximum allowed size (1 GB).'}), 413
+
     data = request.get_json()
     if not data:
         return jsonify({'error': 'No backup data provided.'}), 400
+
+    serialized = json.dumps(data)
+    if len(serialized.encode('utf-8')) > MAX_BACKUP_BYTES:
+        return jsonify({'error': 'Backup exceeds maximum allowed size (1 GB).'}), 413
         
     db = get_db()
     user_id = g.user['id']
@@ -133,7 +196,7 @@ def create_backup():
     # Insert new backup
     db.execute(
         'INSERT INTO backups (user_id, data) VALUES (?, ?)',
-        (user_id, json.dumps(data))
+        (user_id, serialized)
     )
     db.commit()
     

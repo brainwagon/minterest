@@ -69,6 +69,14 @@ We provide an automated Ansible playbook to deploy `minterestd` to any Debian-ba
 *   **Download:** For images, click the **Floppy Disk** icon to save the file to your computer.
 *   **View Image:** Click any image card to view it in full screen.
 
+## Known Limitations / Future Work
+
+### Link title fetching
+
+Link cards currently use the URL hostname as their title. The original implementation fetched the page `<title>` via a third-party proxy (`allorigins.win`), which was removed because it contradicts the local-first, privacy-focused design — every saved link URL was sent to an external service.
+
+To restore rich title fetching without the privacy cost, a self-hosted CORS proxy is needed. A natural place for this is `minterestd`: add a `/proxy?url=<encoded>` route that fetches the remote page server-side and returns the HTML. The frontend would then call `https://minterestd.local/proxy?url=...` instead of allorigins. This only works when minterestd is reachable, so the fallback to hostname should be kept.
+
 ## Design Philosophy
 
 **"maintaining minimal interest"**
