@@ -1699,10 +1699,16 @@ document.getElementById('import-file').onchange = (e) => {
         try {
             const imported = JSON.parse(event.target.result);
             if (imported.topics && imported.items) {
-                await mergeData(imported);
+                const mode = await promptRestoreMode();
+                if (!mode) return;
+                if (mode === 'replace') {
+                    await replaceData(imported);
+                } else {
+                    await mergeData(imported);
+                }
                 await refreshState();
                 navigateToDashboard();
-                alert("Backup merged successfully!");
+                alert(mode === 'replace' ? 'Backup restored successfully!' : 'Backup merged successfully!');
             } else {
                 alert("Invalid backup file structure.");
             }
@@ -1832,12 +1838,16 @@ document.getElementById('btn-connect').onclick = () => {
 
     conn.on('data', async (msg) => {
         if (msg && msg.type === 'SYNC_DATA') {
-            statusBox.textContent = 'Data received! Saving...';
-            await mergeData(msg.payload);
+            statusBox.textContent = 'Data received!';
+            const mode = await promptRestoreMode();
+            if (!mode) { statusBox.textContent = 'Cancelled.'; return; }
+            if (mode === 'replace') {
+                await replaceData(msg.payload);
+            } else {
+                await mergeData(msg.payload);
+            }
             statusBox.textContent = 'Sync Successful! Reloading...';
-            setTimeout(() => {
-                location.reload();
-            }, 1000);
+            setTimeout(() => location.reload(), 1000);
         }
     });
 
@@ -1845,6 +1855,40 @@ document.getElementById('btn-connect').onclick = () => {
          statusBox.textContent = 'Connection Error: ' + err;
     });
 };
+
+/**
+ * Shows the restore-mode dialog and resolves with 'replace', 'merge', or null (cancelled).
+ * @returns {Promise<'replace'|'merge'|null>}
+ */
+function promptRestoreMode() {
+  return new Promise((resolve) => {
+    const dlg = document.getElementById('dlg-restore-mode');
+    const onReplace = () => { cleanup(); resolve('replace'); };
+    const onMerge  = () => { cleanup(); resolve('merge'); };
+    const onCancel = () => { cleanup(); resolve(null); };
+
+    function cleanup() {
+      document.getElementById('btn-restore-replace').removeEventListener('click', onReplace);
+      document.getElementById('btn-restore-merge').removeEventListener('click', onMerge);
+      document.getElementById('btn-restore-cancel').removeEventListener('click', onCancel);
+      dlg.close();
+    }
+
+    document.getElementById('btn-restore-replace').addEventListener('click', onReplace);
+    document.getElementById('btn-restore-merge').addEventListener('click', onMerge);
+    document.getElementById('btn-restore-cancel').addEventListener('click', onCancel);
+    dlg.showModal();
+  });
+}
+
+/**
+ * Replaces all local topics and items with data from a backup.
+ * @param {Object} data - The data object containing topics and items arrays.
+ */
+async function replaceData(data) {
+  await storage.clearAll();
+  await mergeData(data);
+}
 
 /**
  * Merges data received from a peer during P2P sync into the local database.
@@ -2224,24 +2268,29 @@ if (btnRemotePush) {
 }
 
 window.restoreRemoteBackup = async (id) => {
-    if (!confirm('This will merge the selected backup with your local data. Are you sure?')) return;
-    
+    const mode = await promptRestoreMode();
+    if (!mode) return;
+
     const url = getRemoteUrl();
     try {
-        showRemoteStatus('Merging...');
+        showRemoteStatus('Fetching backup...');
         const res = await fetch(`${url}/api/backups/${id}`, {
             headers: { 'Authorization': getRemoteAuth() }
         });
-        
+
         if (!res.ok) {
-             const data = await res.json();
-             return showRemoteStatus(data.error || 'Merge failed', true);
+            const data = await res.json();
+            return showRemoteStatus(data.error || 'Fetch failed', true);
         }
-        
+
         const imported = await res.json();
         if (imported.topics && imported.items) {
-            await mergeData(imported);
-            showRemoteStatus('Merged successfully! Reloading...');
+            if (mode === 'replace') {
+                await replaceData(imported);
+            } else {
+                await mergeData(imported);
+            }
+            showRemoteStatus((mode === 'replace' ? 'Restored' : 'Merged') + ' successfully! Reloading...');
             setTimeout(() => location.reload(), 1000);
         } else {
             showRemoteStatus('Invalid backup format', true);

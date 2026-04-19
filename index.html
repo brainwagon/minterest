@@ -293,6 +293,25 @@
         </div>
     </dialog>
 
+    <!-- Dialog: Replace or Merge backup choice -->
+    <dialog id="dlg-restore-mode">
+        <div style="max-width: 360px;">
+            <h3 style="margin-bottom: 0.75rem;">Restore Backup</h3>
+            <p style="margin-bottom: 1.25rem; color: #666; font-size: 0.9rem;">How would you like to load this backup?</p>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.25rem;">
+                <button id="btn-restore-replace" class="btn-primary" style="text-align:left; padding: 0.75rem 1rem;">
+                    <strong>Replace</strong><br>
+                    <span style="font-size:0.8rem; font-weight:normal;">Erase all current data and load the backup fresh.</span>
+                </button>
+                <button id="btn-restore-merge" class="btn-secondary" style="text-align:left; padding: 0.75rem 1rem;">
+                    <strong>Merge</strong><br>
+                    <span style="font-size:0.8rem; font-weight:normal;">Add backup data on top of what's already here.</span>
+                </button>
+            </div>
+            <button id="btn-restore-cancel" class="btn-secondary" style="width:100%;">Cancel</button>
+        </div>
+    </dialog>
+
     <script type="module" src="app.js"></script>
 </body>
 </html>
