@@ -60,6 +60,9 @@ h1, h2, h3, h4, h5, h6 {
 body.drag-over {
     background-color: #e2e8f0;
 }
+body.dark-mode.drag-over {
+    background-color: #1e2a38;
+}
 
 header {
     position: fixed;

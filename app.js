@@ -1088,7 +1088,7 @@ function createItemCard(item) {
                     cleanup();
                     resolve();
                 };
-                const onCancel = () => { cleanup(); resolve(); };
+                const onCancel = () => { dlgEditLink.close(); cleanup(); resolve(); };
                 function cleanup() {
                     dlgEditLink.removeEventListener('submit', onSubmit);
                     document.getElementById('btn-cancel-edit-link').removeEventListener('click', onCancel);
