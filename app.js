@@ -977,15 +977,14 @@ function createItemCard(item) {
             const bgColor = item.color ? 'transparent' : getPastelColor(hostname);
 
             contentHtml = `
-                <div class="link-preview" style="background-color: ${bgColor};">
-                <img src="${faviconUrl}" class="link-favicon" onerror="this.style.display='none'">
-                <div class="link-domain">${escapeHtml(hostname)}</div>
-            </div>
-            <div class="card-content">
-                <div class="card-title">${escapeHtml(item.title || hostname)}</div>
-                <a href="${escapeHtml(item.content)}" target="_blank" class="card-link">${escapeHtml(item.content)}</a>
-                ${item.comment ? `<div class="card-comment">${escapeHtml(item.comment)}</div>` : ''}
-            </div>`;
+                <div class="link-title-bar" style="background-color: ${bgColor};">
+                    <div class="link-card-title">${escapeHtml(item.title || hostname)}</div>
+                    <img src="${faviconUrl}" class="link-favicon" onerror="this.style.display='none'">
+                </div>
+                <div class="card-content">
+                    <div class="link-domain">${escapeHtml(hostname)}</div>
+                    ${item.comment ? `<div class="card-comment">${escapeHtml(item.comment)}</div>` : ''}
+                </div>`;
         } else {
              contentHtml = `
             <div class="card-content">
@@ -1071,11 +1070,37 @@ function createItemCard(item) {
             if (colorInput) colorInput.checked = true;
             
             dlgNote.showModal();
+        } else if (item.type === 'link') {
+            let hostname = 'Link';
+            try { hostname = new URL(item.content).hostname; } catch (e) {}
+            const dlgEditLink = document.getElementById('dlg-edit-link');
+            document.getElementById('link-title-input').value = item.title || hostname;
+            document.getElementById('link-comment-input').value = item.comment || '';
+            dlgEditLink.showModal();
+            await new Promise((resolve) => {
+                const onSubmit = async () => {
+                    const newTitle = document.getElementById('link-title-input').value.trim();
+                    item.title = newTitle || hostname;
+                    item.comment = document.getElementById('link-comment-input').value;
+                    await storage.db.put('items', item);
+                    await refreshState();
+                    renderContent();
+                    cleanup();
+                    resolve();
+                };
+                const onCancel = () => { cleanup(); resolve(); };
+                function cleanup() {
+                    dlgEditLink.removeEventListener('submit', onSubmit);
+                    document.getElementById('btn-cancel-edit-link').removeEventListener('click', onCancel);
+                }
+                dlgEditLink.addEventListener('submit', onSubmit);
+                document.getElementById('btn-cancel-edit-link').addEventListener('click', onCancel);
+            });
         } else {
             const newComment = prompt("Add a comment:", item.comment || "");
             if (newComment !== null) {
                 item.comment = newComment;
-                await storage.db.put('items', item); 
+                await storage.db.put('items', item);
                 await refreshState();
                 renderContent();
             }

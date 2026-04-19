@@ -301,33 +301,35 @@ main#app {
 }
 
 /* Rich Link Card Styles */
-.link-preview {
-    height: 140px;
+.link-title-bar {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    position: relative;
+    gap: 0.6rem;
+    padding: 0.85rem 1rem;
+    border-radius: 8px 8px 0 0;
+}
+
+.link-card-title {
+    flex: 1;
+    font-weight: 600;
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+    word-break: break-word;
+    color: #333;
 }
 
 .link-favicon {
-    width: 48px;
-    height: 48px;
-    border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    background: white;
-    padding: 4px;
+    width: 24px;
+    height: 24px;
     object-fit: contain;
-    z-index: 2;
+    flex-shrink: 0;
 }
 
 .link-domain {
-    margin-top: 0.5rem;
-    font-weight: 700;
-    color: var(--text-color);
-    font-size: 1.1rem;
-    z-index: 2;
-    text-shadow: var(--text-shadow);
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: var(--secondary-text);
+    letter-spacing: 0.01em;
 }
 
 .card-title {

@@ -312,6 +312,21 @@
         </div>
     </dialog>
 
+    <!-- Dialog: Edit Link -->
+    <dialog id="dlg-edit-link">
+        <form method="dialog">
+            <h3>Edit Link</h3>
+            <label style="display:block; margin: 0.75rem 0 0.25rem;">Title</label>
+            <input type="text" id="link-title-input" style="width:100%; padding:0.5rem; border:1px solid #ddd; border-radius:6px; font-size:0.95rem;">
+            <label style="display:block; margin: 0.75rem 0 0.25rem;">Comment</label>
+            <textarea id="link-comment-input" rows="3" style="width:100%; padding:0.5rem; border:1px solid #ddd; border-radius:6px; font-size:0.9rem; resize:vertical; font-family:inherit;"></textarea>
+            <div class="dialog-buttons">
+                <button type="button" id="btn-cancel-edit-link">Cancel</button>
+                <button type="submit" class="btn-primary">Save</button>
+            </div>
+        </form>
+    </dialog>
+
     <script type="module" src="app.js"></script>
 </body>
 </html>
