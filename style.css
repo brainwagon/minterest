@@ -357,7 +357,7 @@ main#app {
 /* Card Actions */
 .card-actions {
     position: absolute;
-    top: 8px;
+    bottom: 8px;
     right: 8px;
     display: flex;
     gap: 4px;
