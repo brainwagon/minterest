@@ -5,7 +5,6 @@ import QRCode from 'https://esm.sh/qrcode@1.5.3';
 import JSZip from 'https://esm.sh/jszip@3.10.1';
 
 // --- Configuration ---
-const STORAGE_KEY_OLD = 'minterest_data'; // For migration
 const RECYCLE_BIN_ID = 'recycle-bin';
 
 const DEFAULT_PALETTE = [
@@ -138,9 +137,6 @@ async function initDB() {
     try {
         await Promise.race([storage.init(), timeout]);
 
-        if (statusEl) statusEl.textContent = 'Migrating...';
-        await checkMigration();
-
         if (statusEl) statusEl.textContent = 'Loading data...';
         await refreshState();
 
@@ -170,39 +166,6 @@ async function initDB() {
                     };
                 }
             }, 100);
-        }
-    }
-}
-
-// Migrate from localStorage if exists
-async function checkMigration() {
-    const oldData = localStorage.getItem(STORAGE_KEY_OLD);
-    if (oldData) {
-        try {
-            const parsed = JSON.parse(oldData);
-            console.log("Migrating data from localStorage to IndexedDB...", parsed);
-            
-            const tx = storage.db.transaction(['topics', 'items'], 'readwrite');
-            
-            for (const topic of parsed.topics) {
-                // Separate items from topic
-                const { items, ...topicData } = topic;
-                await tx.objectStore('topics').put(topicData);
-                
-                if (items && items.length > 0) {
-                    for (const item of items) {
-                        // Ensure item has topicId
-                        item.topicId = topic.id;
-                        await tx.objectStore('items').put(item);
-                    }
-                }
-            }
-            
-            await tx.done; // Commit the transaction
-            localStorage.removeItem(STORAGE_KEY_OLD); // Clear old data
-            console.log("Migration complete.");
-        } catch (e) {
-            console.error("Migration failed:", e);
         }
     }
 }
