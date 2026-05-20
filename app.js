@@ -124,8 +124,7 @@ async function initDB() {
     try {
         await Promise.race([storage.init(), timeout]);
 
-        const themeSetting = await storage.getSetting('theme').catch(() => null);
-        applyTheme(themeSetting ? themeSetting.isDark : false, false);
+        await applyStoredTheme();
 
         if (statusEl) statusEl.textContent = 'Loading data...';
         await refreshState();
@@ -1574,6 +1573,11 @@ window.addEventListener('paste', async (e) => {
     }
 });
 
+async function applyStoredTheme() {
+    const setting = await storage.getSetting('theme').catch(() => null);
+    applyTheme(setting ? setting.isDark : false, false);
+}
+
 /**
  * Applies the selected theme (light or dark) to the application.
  * @param {boolean} isDark - Whether to apply the dark theme.
@@ -1645,6 +1649,7 @@ document.getElementById('import-file').onchange = (e) => {
                 } else {
                     await mergeData(imported);
                 }
+                await applyStoredTheme();
                 await refreshState();
                 navigateToDashboard();
                 alert(mode === 'replace' ? 'Backup restored successfully!' : 'Backup merged successfully!');
