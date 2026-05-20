@@ -2163,11 +2163,7 @@ function renderRemoteBackups(backups) {
     
     backups.forEach(b => {
         const li = document.createElement('li');
-        li.style.display = 'flex';
-        li.style.justifyContent = 'space-between';
-        li.style.alignItems = 'center';
-        li.style.padding = '0.5rem 0';
-        li.style.borderBottom = '1px solid #eee';
+        li.className = 'backup-item';
 
         const date = new Date(b.timestamp).toLocaleString();
         const span = document.createElement('span');
