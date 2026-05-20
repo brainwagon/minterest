@@ -397,7 +397,6 @@ main#app {
     color: var(--accent-color);
 }
 
-/* Button with icon adjustment */
 button {
     display: inline-flex;
     align-items: center;
@@ -411,7 +410,9 @@ button {
     font-size: 0.9rem;
     letter-spacing: 0.01em;
     cursor: pointer;
-    transition: filter 0.2s;
+    transition: filter 0.2s, background-color 0.2s, color 0.2s;
+    background-color: var(--drop-zone-bg);
+    color: var(--text-color);
 }
 
 .card-comment {
@@ -439,21 +440,6 @@ button {
     background: var(--accent-color);
     position: relative; /* Ensure buttons are positioned relative to card */
     padding: 1rem;
-}
-
-/* Buttons */
-button {
-    padding: 0.6rem 1.2rem;
-    border-radius: 24px;
-    border: none;
-    font-family: 'Outfit', system-ui, sans-serif;
-    font-weight: 600;
-    font-size: 0.9rem;
-    letter-spacing: 0.01em;
-    cursor: pointer;
-    transition: filter 0.2s, background-color 0.2s, color 0.2s;
-    background-color: var(--drop-zone-bg);
-    color: var(--text-color);
 }
 
 button:hover {
@@ -584,12 +570,6 @@ dialog input {
     letter-spacing: 0.04em;
     opacity: 0.6;
     margin-top: 0.5rem;
-}
-
-/* Dragging state for SortableJS */
-.sortable-ghost {
-    opacity: 0.4;
-    border: 2px dashed var(--accent-color);
 }
 
 /* Color Picker Styles */

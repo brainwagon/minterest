@@ -57,9 +57,8 @@ async function emptyRecycleBin() {
 
     await tx.done;
     
-    await refreshState();
-    renderContent();
-    updateView(); 
+    await flushAndRender();
+    updateView();
 }
 
 function renderSpecialTopics() {
@@ -70,7 +69,6 @@ function renderSpecialTopics() {
     const card = document.createElement('div');
     card.className = 'card topic-card recycle-card';
     card.dataset.id = RECYCLE_BIN_ID;
-    card.textContent = ''; // Explicitly clear any inherited text
     card.innerHTML = `
         <div style="pointer-events: none; text-align: center; display: flex; align-items: center; justify-content: center; height: 100%;">
             <img src="recycle.png" style="width: 120px; height: 120px; object-fit: contain;">
@@ -226,14 +224,12 @@ async function refreshState() {
         let userPalette = [];
         let themeSetting = null;
 
-        if (storage.db.objectStoreNames.contains('settings')) {
-            try {
-                rootSettings = await storage.getSetting('root');
-                userPalette = await storage.getSetting('user_palette') || [];
-                themeSetting = await storage.getSetting('theme');
-            } catch (e) {
-                console.warn("Failed to fetch settings, ignoring:", e);
-            }
+        try {
+            rootSettings = await storage.getSetting('root');
+            userPalette = await storage.getSetting('user_palette') || [];
+            themeSetting = await storage.getSetting('theme');
+        } catch (e) {
+            console.warn("Failed to fetch settings, ignoring:", e);
         }
         
         if (rootSettings) {
@@ -256,6 +252,11 @@ async function refreshState() {
         console.error("Fatal error in refreshState:", e);
         throw e;
     }
+}
+
+async function flushAndRender() {
+    await refreshState();
+    renderContent();
 }
 
 // --- Navigation ---
@@ -510,8 +511,7 @@ async function scanCurrentView() {
     }
 
     if (changesMade) {
-        await refreshState();
-        renderContent();
+        await flushAndRender();
     }
 }
 
@@ -564,13 +564,11 @@ function setupNativeDnD() {
 
     grid.removeEventListener('dragstart', handleDragStart); // Avoid duplicates
     grid.removeEventListener('dragover', handleDragOver);
-    grid.removeEventListener('dragleave', handleDragLeave);
     grid.removeEventListener('drop', handleDrop);
     grid.removeEventListener('dragend', handleDragEnd);
 
     grid.addEventListener('dragstart', handleDragStart);
     grid.addEventListener('dragover', handleDragOver);
-    grid.addEventListener('dragleave', handleDragLeave);
     grid.addEventListener('drop', handleDrop);
     grid.addEventListener('dragend', handleDragEnd);
 }
@@ -694,11 +692,6 @@ function getClosestCard(x, y) {
     }, { dist: Number.POSITIVE_INFINITY }).element;
 }
 
-function handleDragLeave(e) {
-    // Basic cleanup if leaving the grid entirely, but tricky because dragleave fires when entering children
-    // Usually handled by dragover clearing visuals if target changes
-}
-
 async function handleDrop(e) {
     e.preventDefault();
     const draggedId = dragState.draggedId;
@@ -712,8 +705,6 @@ async function handleDrop(e) {
     } else if (dragState.targetType === 'reorder' && dragState.targetId) {
         await reorderItem(draggedId, dragState.targetId, dragState.dropPosition);
     }
-
-    handleDragEnd();
 }
 
 function handleDragEnd() {
@@ -779,8 +770,7 @@ async function moveToTopic(itemId, type, targetTopicId) {
     }
 
     await tx.done;
-    await refreshState();
-    renderContent();
+    await flushAndRender();
 }
 
 async function reorderItem(draggedId, targetId, position) {
@@ -826,8 +816,7 @@ async function reorderItem(draggedId, targetId, position) {
     
     await Promise.all(promises);
     await tx.done;
-    await refreshState();
-    renderContent();
+    await flushAndRender();
 }
 
 function createTopicCard(topic) {
@@ -1083,8 +1072,7 @@ function createItemCard(item) {
                     item.title = newTitle || hostname;
                     item.comment = document.getElementById('link-comment-input').value;
                     await storage.db.put('items', item);
-                    await refreshState();
-                    renderContent();
+                    await flushAndRender();
                     cleanup();
                     resolve();
                 };
@@ -1101,8 +1089,7 @@ function createItemCard(item) {
             if (newComment !== null) {
                 item.comment = newComment;
                 await storage.db.put('items', item);
-                await refreshState();
-                renderContent();
+                await flushAndRender();
             }
         }
     };
@@ -1121,8 +1108,7 @@ function createItemCard(item) {
                 item.topicId = RECYCLE_BIN_ID;
                 await storage.db.put('items', item);
             }
-            await refreshState();
-            renderContent();
+            await flushAndRender();
         }
     };
 
@@ -1163,15 +1149,6 @@ async function updateStorageUsage() {
     }
 }
 
-function getCardColor(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-        hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
-    return '#' + '00000'.substring(0, 6 - c.length) + c;
-}
-
 function getPastelColor(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -1196,8 +1173,7 @@ async function addNewTopic(name, color = null, description = '', parentId = "") 
     if (color) topic.color = color;
     
     await storage.db.add('topics', topic);
-    await refreshState();
-    renderContent();
+    await flushAndRender();
 }
 
 async function updateTopic(id, name, color, description) {
@@ -1237,8 +1213,7 @@ async function deleteTopic(id, forcePermanent = false) {
                 await tx.store.put(t);
             }
             await tx.done;
-            await refreshState();
-            renderContent();
+            await flushAndRender();
         }
         return;
     }
@@ -1307,8 +1282,7 @@ async function addItemToTopic(type, content, title = '', color = null, comment =
     }
     
     await storage.db.add('items', item);
-    await refreshState();
-    renderContent();
+    await flushAndRender();
 }
 
 
@@ -1436,12 +1410,11 @@ dlgNote.onsubmit = async (e) => {
         editingItem.color = color;
         
         await storage.db.put('items', editingItem);
-        await refreshState();
-        renderContent();
+        await flushAndRender();
     } else {
         addItemToTopic('note', content, '', color, comment);
     }
-    
+
     editingItem = null;
 };
 
@@ -1542,7 +1515,7 @@ function handleDataTransfer(dt) {
     if (url) {
         // Some browsers include comments or multiple lines
         url = url.split('\n')[0].trim();
-        // Ignore internal SortableJS drags or empty strings
+        // Ignore empty strings or fragment-only URLs
         if (url && !url.startsWith('#')) {
             if (url.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i)) {
                 addItemToTopic('image', url);
@@ -2055,8 +2028,7 @@ dlgEditColor.onsubmit = async (e) => {
             entity.color = newColor;
             await store.put(entity);
             await tx.done;
-            await refreshState();
-            renderContent();
+            await flushAndRender();
         }
     }
     currentEditTarget = null;
@@ -2118,8 +2090,7 @@ async function saveExpiration(isoDateString) {
         }
         await store.put(entity);
         await tx.done;
-        await refreshState();
-        renderContent();
+        await flushAndRender();
     }
 }
 
@@ -2244,16 +2215,27 @@ function renderRemoteBackups(backups) {
         li.style.alignItems = 'center';
         li.style.padding = '0.5rem 0';
         li.style.borderBottom = '1px solid #eee';
-        
+
         const date = new Date(b.timestamp).toLocaleString();
-        
-        li.innerHTML = `
-            <span style="font-size:0.9rem;">${date}</span>
-            <div>
-                <button class="btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" onclick="restoreRemoteBackup(${b.id})">Restore</button>
-                <button class="btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem; color:#d9534f;" onclick="deleteRemoteBackup(${b.id})">Delete</button>
-            </div>
-        `;
+        const span = document.createElement('span');
+        span.style.fontSize = '0.9rem';
+        span.textContent = date;
+
+        const btnRestore = document.createElement('button');
+        btnRestore.className = 'btn-secondary';
+        btnRestore.style.cssText = 'padding:0.2rem 0.5rem; font-size:0.8rem;';
+        btnRestore.textContent = 'Restore';
+        btnRestore.addEventListener('click', () => restoreRemoteBackup(b.id));
+
+        const btnDelete = document.createElement('button');
+        btnDelete.className = 'btn-secondary';
+        btnDelete.style.cssText = 'padding:0.2rem 0.5rem; font-size:0.8rem; color:#d9534f;';
+        btnDelete.textContent = 'Delete';
+        btnDelete.addEventListener('click', () => deleteRemoteBackup(b.id));
+
+        const div = document.createElement('div');
+        div.append(btnRestore, btnDelete);
+        li.append(span, div);
         remoteBackupsList.appendChild(li);
     });
 }
@@ -2292,7 +2274,7 @@ if (btnRemotePush) {
     };
 }
 
-window.restoreRemoteBackup = async (id) => {
+async function restoreRemoteBackup(id) {
     const mode = await promptRestoreMode();
     if (!mode) return;
 
@@ -2323,9 +2305,9 @@ window.restoreRemoteBackup = async (id) => {
     } catch (e) {
         showRemoteStatus('Connection error: ' + e.message, true);
     }
-};
+}
 
-window.deleteRemoteBackup = async (id) => {
+async function deleteRemoteBackup(id) {
     if (!confirm('Delete this remote backup?')) return;
     
     const url = getRemoteUrl();
@@ -2346,4 +2328,4 @@ window.deleteRemoteBackup = async (id) => {
     } catch (e) {
         showRemoteStatus('Connection error: ' + e.message, true);
     }
-};
+}
