@@ -137,6 +137,9 @@ async function initDB() {
     try {
         await Promise.race([storage.init(), timeout]);
 
+        const themeSetting = await storage.getSetting('theme').catch(() => null);
+        applyTheme(themeSetting ? themeSetting.isDark : false, false);
+
         if (statusEl) statusEl.textContent = 'Loading data...';
         await refreshState();
 
@@ -185,30 +188,20 @@ async function refreshState() {
 
         let rootSettings = null;
         let userPalette = [];
-        let themeSetting = null;
 
         try {
             rootSettings = await storage.getSetting('root');
             userPalette = await storage.getSetting('user_palette') || [];
-            themeSetting = await storage.getSetting('theme');
         } catch (e) {
             console.warn("Failed to fetch settings, ignoring:", e);
         }
-        
+
         if (rootSettings) {
             state.root = rootSettings;
         } else {
             state.root = { name: 'My Topics', description: 'Main Board' };
         }
-        state.userPalette = userPalette.colors || []; 
-        
-        // Apply theme
-        if (themeSetting) {
-            applyTheme(themeSetting.isDark, false); // Don't re-save what we just loaded
-        } else {
-            // Default to system preference? For now just light mode
-            applyTheme(false, false);
-        }
+        state.userPalette = userPalette.colors || [];
 
         updateStorageUsage();
     } catch (e) {
