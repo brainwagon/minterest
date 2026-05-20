@@ -13,7 +13,7 @@
 *   **Local-First & Private:** All data is stored in your browser's **IndexedDB**. Nothing is ever sent to a cloud server.
 *   **Drag & Drop Reordering:** Arrange your cards exactly how you want them.
 *   **Clipboard Support:** Paste (Ctrl+V) text, links, or images directly onto your board.
-*   **Backup & Restore:** Export your entire database to a JSON file for safekeeping or to move to another device.
+*   **Backup & Restore:** Export your entire database to a JSON file for safekeeping or to move to another device. When restoring, choose to **Replace** (overwrite all current data) or **Merge** (add backup data on top of existing).
 *   **Remote Backup Server (minterestd):** Optionally deploy a private Python-based backup server to store your data securely on your own hardware.
 
 ## Remote Backup Server (minterestd)
@@ -69,6 +69,12 @@ We provide an automated Ansible playbook to deploy `minterestd` to any Debian-ba
 *   **Download:** For images, click the **Floppy Disk** icon to save the file to your computer.
 *   **View Image:** Click any image card to view it in full screen.
 
+## Recent Changes
+
+*   **Dark mode dialog support:** All dialogs (topic, note, color picker, remote backup, edit link) now fully respect dark mode. Previously, input borders and text used hardcoded colors that ignored the theme.
+*   **Theme preserved after restore:** Restoring a local backup file now immediately applies the theme stored in the backup, without requiring a page reload.
+*   **Drag & drop:** Now uses the native HTML5 Drag & Drop API directly (SortableJS was removed in a prior release).
+
 ## Known Limitations / Future Work
 
 ### Link title fetching
@@ -90,7 +96,7 @@ To restore rich title fetching without the privacy cost, a self-hosted CORS prox
 
 *   **Storage:** `IndexedDB` (via the lightweight `idb` wrapper).
 *   **Icons:** Inline SVG **Heroicons**.
-*   **Drag & Drop:** Powered by **SortableJS** (loaded via ESM CDN).
+*   **Drag & Drop:** Native HTML5 Drag & Drop API.
 *   **Styling:** CSS Grid & Flexbox with CSS Variables for theming.
 
 ## License
