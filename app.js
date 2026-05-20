@@ -36,22 +36,9 @@ async function emptyRecycleBin() {
     await Promise.all(items.map(id => tx.objectStore('items').delete(id)));
     
     // 2. Delete all topics in bin and their entire descendant trees.
-    const allTopics = await tx.objectStore('topics').getAll();
-    const binTopics = allTopics.filter(t => t.parentId === RECYCLE_BIN_ID);
-
-    async function deleteBinTopicRecursively(topicId, allTopicsSnapshot, transaction) {
-        const childItems = await transaction.objectStore('items')
-            .index('topicId').getAllKeys(topicId);
-        await Promise.all(childItems.map(id => transaction.objectStore('items').delete(id)));
-        const subTopics = allTopicsSnapshot.filter(t => t.parentId === topicId);
-        for (const sub of subTopics) {
-            await deleteBinTopicRecursively(sub.id, allTopicsSnapshot, transaction);
-        }
-        await transaction.objectStore('topics').delete(topicId);
-    }
-
+    const binTopics = await tx.objectStore('topics').index('parentId').getAll(RECYCLE_BIN_ID);
     for (const binTopic of binTopics) {
-        await deleteBinTopicRecursively(binTopic.id, allTopics, tx);
+        await deleteRecursive(binTopic.id, tx);
     }
 
     await tx.done;
@@ -1154,6 +1141,16 @@ async function updateTopic(id, name, color, description) {
     }
 }
 
+async function deleteRecursive(topicId, tx) {
+    await tx.objectStore('topics').delete(topicId);
+    const items = await tx.objectStore('items').index('topicId').getAllKeys(topicId);
+    await Promise.all(items.map(id => tx.objectStore('items').delete(id)));
+    const subTopics = await tx.objectStore('topics').index('parentId').getAll(topicId);
+    for (const sub of subTopics) {
+        await deleteRecursive(sub.id, tx);
+    }
+}
+
 async function deleteTopic(id, forcePermanent = false) {
     const topic = state.topics.find(t => t.id === id);
     if (!topic) return;
@@ -1184,20 +1181,6 @@ async function deleteTopic(id, forcePermanent = false) {
 
     // Recursive delete
     const tx = storage.db.transaction(['topics', 'items'], 'readwrite');
-    
-    async function deleteRecursive(topicId, tx) {
-        await tx.objectStore('topics').delete(topicId);
-        
-        // Delete Items
-        const items = await tx.objectStore('items').index('topicId').getAllKeys(topicId);
-        await Promise.all(items.map(itemId => tx.objectStore('items').delete(itemId)));
-        
-        // Find Sub-topics by querying the index directly (not stale in-memory state).
-        const subTopics = await tx.objectStore('topics').index('parentId').getAll(topicId);
-        for (const sub of subTopics) {
-            await deleteRecursive(sub.id, tx);
-        }
-    }
 
     await deleteRecursive(id, tx);
     
