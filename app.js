@@ -5,7 +5,6 @@ import QRCode from 'https://esm.sh/qrcode@1.5.3';
 import JSZip from 'https://esm.sh/jszip@3.10.1';
 
 // --- Configuration ---
-const STORAGE_KEY_OLD = 'minterest_data'; // For migration
 const RECYCLE_BIN_ID = 'recycle-bin';
 
 const DEFAULT_PALETTE = [
@@ -37,29 +36,15 @@ async function emptyRecycleBin() {
     await Promise.all(items.map(id => tx.objectStore('items').delete(id)));
     
     // 2. Delete all topics in bin and their entire descendant trees.
-    const allTopics = await tx.objectStore('topics').getAll();
-    const binTopics = allTopics.filter(t => t.parentId === RECYCLE_BIN_ID);
-
-    async function deleteBinTopicRecursively(topicId, allTopicsSnapshot, transaction) {
-        const childItems = await transaction.objectStore('items')
-            .index('topicId').getAllKeys(topicId);
-        await Promise.all(childItems.map(id => transaction.objectStore('items').delete(id)));
-        const subTopics = allTopicsSnapshot.filter(t => t.parentId === topicId);
-        for (const sub of subTopics) {
-            await deleteBinTopicRecursively(sub.id, allTopicsSnapshot, transaction);
-        }
-        await transaction.objectStore('topics').delete(topicId);
-    }
-
+    const binTopics = await tx.objectStore('topics').index('parentId').getAll(RECYCLE_BIN_ID);
     for (const binTopic of binTopics) {
-        await deleteBinTopicRecursively(binTopic.id, allTopics, tx);
+        await deleteRecursive(binTopic.id, tx);
     }
 
     await tx.done;
     
-    await refreshState();
-    renderContent();
-    updateView(); 
+    await flushAndRender();
+    updateView();
 }
 
 function renderSpecialTopics() {
@@ -70,7 +55,6 @@ function renderSpecialTopics() {
     const card = document.createElement('div');
     card.className = 'card topic-card recycle-card';
     card.dataset.id = RECYCLE_BIN_ID;
-    card.textContent = ''; // Explicitly clear any inherited text
     card.innerHTML = `
         <div style="pointer-events: none; text-align: center; display: flex; align-items: center; justify-content: center; height: 100%;">
             <img src="recycle.png" style="width: 120px; height: 120px; object-fit: contain;">
@@ -140,8 +124,7 @@ async function initDB() {
     try {
         await Promise.race([storage.init(), timeout]);
 
-        if (statusEl) statusEl.textContent = 'Migrating...';
-        await checkMigration();
+        await applyStoredTheme();
 
         if (statusEl) statusEl.textContent = 'Loading data...';
         await refreshState();
@@ -176,39 +159,6 @@ async function initDB() {
     }
 }
 
-// Migrate from localStorage if exists
-async function checkMigration() {
-    const oldData = localStorage.getItem(STORAGE_KEY_OLD);
-    if (oldData) {
-        try {
-            const parsed = JSON.parse(oldData);
-            console.log("Migrating data from localStorage to IndexedDB...", parsed);
-            
-            const tx = storage.db.transaction(['topics', 'items'], 'readwrite');
-            
-            for (const topic of parsed.topics) {
-                // Separate items from topic
-                const { items, ...topicData } = topic;
-                await tx.objectStore('topics').put(topicData);
-                
-                if (items && items.length > 0) {
-                    for (const item of items) {
-                        // Ensure item has topicId
-                        item.topicId = topic.id;
-                        await tx.objectStore('items').put(item);
-                    }
-                }
-            }
-            
-            await tx.done; // Commit the transaction
-            localStorage.removeItem(STORAGE_KEY_OLD); // Clear old data
-            console.log("Migration complete.");
-        } catch (e) {
-            console.error("Migration failed:", e);
-        }
-    }
-}
-
 // Load data from DB into memory
 async function refreshState() {
     try {
@@ -224,38 +174,43 @@ async function refreshState() {
 
         let rootSettings = null;
         let userPalette = [];
-        let themeSetting = null;
 
-        if (storage.db.objectStoreNames.contains('settings')) {
-            try {
-                rootSettings = await storage.getSetting('root');
-                userPalette = await storage.getSetting('user_palette') || [];
-                themeSetting = await storage.getSetting('theme');
-            } catch (e) {
-                console.warn("Failed to fetch settings, ignoring:", e);
-            }
+        try {
+            rootSettings = await storage.getSetting('root');
+            userPalette = await storage.getSetting('user_palette') || [];
+        } catch (e) {
+            console.warn("Failed to fetch settings, ignoring:", e);
         }
-        
+
         if (rootSettings) {
             state.root = rootSettings;
         } else {
             state.root = { name: 'My Topics', description: 'Main Board' };
         }
-        state.userPalette = userPalette.colors || []; 
-        
-        // Apply theme
-        if (themeSetting) {
-            applyTheme(themeSetting.isDark, false); // Don't re-save what we just loaded
-        } else {
-            // Default to system preference? For now just light mode
-            applyTheme(false, false);
-        }
+        state.userPalette = userPalette.colors || [];
 
         updateStorageUsage();
     } catch (e) {
         console.error("Fatal error in refreshState:", e);
         throw e;
     }
+}
+
+async function flushAndRender() {
+    await refreshState();
+    renderContent();
+}
+
+async function mutateEntity(type, id, mutate) {
+    const storeName = type === 'topic' ? 'topics' : 'items';
+    const tx = storage.db.transaction([storeName], 'readwrite');
+    const store = tx.objectStore(storeName);
+    const entity = await store.get(id);
+    if (entity) {
+        mutate(entity);
+        await store.put(entity);
+    }
+    await tx.done;
 }
 
 // --- Navigation ---
@@ -472,24 +427,14 @@ async function checkExpiration(node, type) {
     if (Date.now() > expiry) {
         console.log(`Node ${node.id} expired. Moving to Recycle Bin.`);
         
-        const tx = storage.db.transaction([type === 'topic' ? 'topics' : 'items'], 'readwrite');
-        const store = tx.objectStore(type === 'topic' ? 'topics' : 'items');
-        
-        const freshNode = await store.get(node.id);
-        if (freshNode) {
-            // Unset expiry
-            delete freshNode.expiresAt;
-            
-            // Move to bin
+        await mutateEntity(type, node.id, (e) => {
+            delete e.expiresAt;
             if (type === 'topic') {
-                freshNode.parentId = RECYCLE_BIN_ID;
+                e.parentId = RECYCLE_BIN_ID;
             } else {
-                freshNode.topicId = RECYCLE_BIN_ID;
+                e.topicId = RECYCLE_BIN_ID;
             }
-            
-            await store.put(freshNode);
-        }
-        await tx.done;
+        });
         return true;
     }
     return false;
@@ -510,8 +455,7 @@ async function scanCurrentView() {
     }
 
     if (changesMade) {
-        await refreshState();
-        renderContent();
+        await flushAndRender();
     }
 }
 
@@ -564,13 +508,11 @@ function setupNativeDnD() {
 
     grid.removeEventListener('dragstart', handleDragStart); // Avoid duplicates
     grid.removeEventListener('dragover', handleDragOver);
-    grid.removeEventListener('dragleave', handleDragLeave);
     grid.removeEventListener('drop', handleDrop);
     grid.removeEventListener('dragend', handleDragEnd);
 
     grid.addEventListener('dragstart', handleDragStart);
     grid.addEventListener('dragover', handleDragOver);
-    grid.addEventListener('dragleave', handleDragLeave);
     grid.addEventListener('drop', handleDrop);
     grid.addEventListener('dragend', handleDragEnd);
 }
@@ -694,11 +636,6 @@ function getClosestCard(x, y) {
     }, { dist: Number.POSITIVE_INFINITY }).element;
 }
 
-function handleDragLeave(e) {
-    // Basic cleanup if leaving the grid entirely, but tricky because dragleave fires when entering children
-    // Usually handled by dragover clearing visuals if target changes
-}
-
 async function handleDrop(e) {
     e.preventDefault();
     const draggedId = dragState.draggedId;
@@ -712,8 +649,6 @@ async function handleDrop(e) {
     } else if (dragState.targetType === 'reorder' && dragState.targetId) {
         await reorderItem(draggedId, dragState.targetId, dragState.dropPosition);
     }
-
-    handleDragEnd();
 }
 
 function handleDragEnd() {
@@ -779,8 +714,7 @@ async function moveToTopic(itemId, type, targetTopicId) {
     }
 
     await tx.done;
-    await refreshState();
-    renderContent();
+    await flushAndRender();
 }
 
 async function reorderItem(draggedId, targetId, position) {
@@ -826,8 +760,7 @@ async function reorderItem(draggedId, targetId, position) {
     
     await Promise.all(promises);
     await tx.done;
-    await refreshState();
-    renderContent();
+    await flushAndRender();
 }
 
 function createTopicCard(topic) {
@@ -1083,8 +1016,7 @@ function createItemCard(item) {
                     item.title = newTitle || hostname;
                     item.comment = document.getElementById('link-comment-input').value;
                     await storage.db.put('items', item);
-                    await refreshState();
-                    renderContent();
+                    await flushAndRender();
                     cleanup();
                     resolve();
                 };
@@ -1101,8 +1033,7 @@ function createItemCard(item) {
             if (newComment !== null) {
                 item.comment = newComment;
                 await storage.db.put('items', item);
-                await refreshState();
-                renderContent();
+                await flushAndRender();
             }
         }
     };
@@ -1121,8 +1052,7 @@ function createItemCard(item) {
                 item.topicId = RECYCLE_BIN_ID;
                 await storage.db.put('items', item);
             }
-            await refreshState();
-            renderContent();
+            await flushAndRender();
         }
     };
 
@@ -1163,15 +1093,6 @@ async function updateStorageUsage() {
     }
 }
 
-function getCardColor(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-        hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
-    return '#' + '00000'.substring(0, 6 - c.length) + c;
-}
-
 function getPastelColor(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -1196,8 +1117,7 @@ async function addNewTopic(name, color = null, description = '', parentId = "") 
     if (color) topic.color = color;
     
     await storage.db.add('topics', topic);
-    await refreshState();
-    renderContent();
+    await flushAndRender();
 }
 
 async function updateTopic(id, name, color, description) {
@@ -1220,6 +1140,16 @@ async function updateTopic(id, name, color, description) {
     }
 }
 
+async function deleteRecursive(topicId, tx) {
+    await tx.objectStore('topics').delete(topicId);
+    const items = await tx.objectStore('items').index('topicId').getAllKeys(topicId);
+    await Promise.all(items.map(id => tx.objectStore('items').delete(id)));
+    const subTopics = await tx.objectStore('topics').index('parentId').getAll(topicId);
+    for (const sub of subTopics) {
+        await deleteRecursive(sub.id, tx);
+    }
+}
+
 async function deleteTopic(id, forcePermanent = false) {
     const topic = state.topics.find(t => t.id === id);
     if (!topic) return;
@@ -1237,8 +1167,7 @@ async function deleteTopic(id, forcePermanent = false) {
                 await tx.store.put(t);
             }
             await tx.done;
-            await refreshState();
-            renderContent();
+            await flushAndRender();
         }
         return;
     }
@@ -1251,20 +1180,6 @@ async function deleteTopic(id, forcePermanent = false) {
 
     // Recursive delete
     const tx = storage.db.transaction(['topics', 'items'], 'readwrite');
-    
-    async function deleteRecursive(topicId, tx) {
-        await tx.objectStore('topics').delete(topicId);
-        
-        // Delete Items
-        const items = await tx.objectStore('items').index('topicId').getAllKeys(topicId);
-        await Promise.all(items.map(itemId => tx.objectStore('items').delete(itemId)));
-        
-        // Find Sub-topics by querying the index directly (not stale in-memory state).
-        const subTopics = await tx.objectStore('topics').index('parentId').getAll(topicId);
-        for (const sub of subTopics) {
-            await deleteRecursive(sub.id, tx);
-        }
-    }
 
     await deleteRecursive(id, tx);
     
@@ -1307,8 +1222,7 @@ async function addItemToTopic(type, content, title = '', color = null, comment =
     }
     
     await storage.db.add('items', item);
-    await refreshState();
-    renderContent();
+    await flushAndRender();
 }
 
 
@@ -1436,12 +1350,11 @@ dlgNote.onsubmit = async (e) => {
         editingItem.color = color;
         
         await storage.db.put('items', editingItem);
-        await refreshState();
-        renderContent();
+        await flushAndRender();
     } else {
         addItemToTopic('note', content, '', color, comment);
     }
-    
+
     editingItem = null;
 };
 
@@ -1542,7 +1455,7 @@ function handleDataTransfer(dt) {
     if (url) {
         // Some browsers include comments or multiple lines
         url = url.split('\n')[0].trim();
-        // Ignore internal SortableJS drags or empty strings
+        // Ignore empty strings or fragment-only URLs
         if (url && !url.startsWith('#')) {
             if (url.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i)) {
                 addItemToTopic('image', url);
@@ -1660,6 +1573,11 @@ window.addEventListener('paste', async (e) => {
     }
 });
 
+async function applyStoredTheme() {
+    const setting = await storage.getSetting('theme').catch(() => null);
+    applyTheme(setting ? setting.isDark : false, false);
+}
+
 /**
  * Applies the selected theme (light or dark) to the application.
  * @param {boolean} isDark - Whether to apply the dark theme.
@@ -1731,6 +1649,7 @@ document.getElementById('import-file').onchange = (e) => {
                 } else {
                     await mergeData(imported);
                 }
+                await applyStoredTheme();
                 await refreshState();
                 navigateToDashboard();
                 alert(mode === 'replace' ? 'Backup restored successfully!' : 'Backup merged successfully!');
@@ -2047,17 +1966,10 @@ dlgEditColor.onsubmit = async (e) => {
     const newColor = radio ? radio.value : picker.value;
 
     if (newColor) {
-        const tx = storage.db.transaction([currentEditTarget.type === 'topic' ? 'topics' : 'items'], 'readwrite');
-        const store = tx.objectStore(currentEditTarget.type === 'topic' ? 'topics' : 'items');
-        
-        const entity = await store.get(currentEditTarget.id);
-        if (entity) {
-            entity.color = newColor;
-            await store.put(entity);
-            await tx.done;
-            await refreshState();
-            renderContent();
-        }
+        await mutateEntity(currentEditTarget.type, currentEditTarget.id, (e) => {
+            e.color = newColor;
+        });
+        await flushAndRender();
     }
     currentEditTarget = null;
 };
@@ -2106,21 +2018,14 @@ dlgExpiration.onsubmit = async (e) => {
 };
 
 async function saveExpiration(isoDateString) {
-    const tx = storage.db.transaction([expirationTarget.type === 'topic' ? 'topics' : 'items'], 'readwrite');
-    const store = tx.objectStore(expirationTarget.type === 'topic' ? 'topics' : 'items');
-    
-    const entity = await store.get(expirationTarget.id);
-    if (entity) {
+    await mutateEntity(expirationTarget.type, expirationTarget.id, (e) => {
         if (isoDateString) {
-            entity.expiresAt = isoDateString;
+            e.expiresAt = isoDateString;
         } else {
-            delete entity.expiresAt;
+            delete e.expiresAt;
         }
-        await store.put(entity);
-        await tx.done;
-        await refreshState();
-        renderContent();
-    }
+    });
+    await flushAndRender();
 }
 
 // --- Remote Backup Logic ---
@@ -2239,21 +2144,28 @@ function renderRemoteBackups(backups) {
     
     backups.forEach(b => {
         const li = document.createElement('li');
-        li.style.display = 'flex';
-        li.style.justifyContent = 'space-between';
-        li.style.alignItems = 'center';
-        li.style.padding = '0.5rem 0';
-        li.style.borderBottom = '1px solid #eee';
-        
+        li.className = 'backup-item';
+
         const date = new Date(b.timestamp).toLocaleString();
-        
-        li.innerHTML = `
-            <span style="font-size:0.9rem;">${date}</span>
-            <div>
-                <button class="btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem;" onclick="restoreRemoteBackup(${b.id})">Restore</button>
-                <button class="btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.8rem; color:#d9534f;" onclick="deleteRemoteBackup(${b.id})">Delete</button>
-            </div>
-        `;
+        const span = document.createElement('span');
+        span.style.fontSize = '0.9rem';
+        span.textContent = date;
+
+        const btnRestore = document.createElement('button');
+        btnRestore.className = 'btn-secondary';
+        btnRestore.style.cssText = 'padding:0.2rem 0.5rem; font-size:0.8rem;';
+        btnRestore.textContent = 'Restore';
+        btnRestore.addEventListener('click', () => restoreRemoteBackup(b.id));
+
+        const btnDelete = document.createElement('button');
+        btnDelete.className = 'btn-secondary';
+        btnDelete.style.cssText = 'padding:0.2rem 0.5rem; font-size:0.8rem; color:#d9534f;';
+        btnDelete.textContent = 'Delete';
+        btnDelete.addEventListener('click', () => deleteRemoteBackup(b.id));
+
+        const div = document.createElement('div');
+        div.append(btnRestore, btnDelete);
+        li.append(span, div);
         remoteBackupsList.appendChild(li);
     });
 }
@@ -2292,7 +2204,7 @@ if (btnRemotePush) {
     };
 }
 
-window.restoreRemoteBackup = async (id) => {
+async function restoreRemoteBackup(id) {
     const mode = await promptRestoreMode();
     if (!mode) return;
 
@@ -2323,9 +2235,9 @@ window.restoreRemoteBackup = async (id) => {
     } catch (e) {
         showRemoteStatus('Connection error: ' + e.message, true);
     }
-};
+}
 
-window.deleteRemoteBackup = async (id) => {
+async function deleteRemoteBackup(id) {
     if (!confirm('Delete this remote backup?')) return;
     
     const url = getRemoteUrl();
@@ -2346,4 +2258,4 @@ window.deleteRemoteBackup = async (id) => {
     } catch (e) {
         showRemoteStatus('Connection error: ' + e.message, true);
     }
-};
+}

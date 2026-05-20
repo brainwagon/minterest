@@ -397,7 +397,6 @@ main#app {
     color: var(--accent-color);
 }
 
-/* Button with icon adjustment */
 button {
     display: inline-flex;
     align-items: center;
@@ -411,7 +410,9 @@ button {
     font-size: 0.9rem;
     letter-spacing: 0.01em;
     cursor: pointer;
-    transition: filter 0.2s;
+    transition: filter 0.2s, background-color 0.2s, color 0.2s;
+    background-color: var(--drop-zone-bg);
+    color: var(--text-color);
 }
 
 .card-comment {
@@ -439,21 +440,6 @@ button {
     background: var(--accent-color);
     position: relative; /* Ensure buttons are positioned relative to card */
     padding: 1rem;
-}
-
-/* Buttons */
-button {
-    padding: 0.6rem 1.2rem;
-    border-radius: 24px;
-    border: none;
-    font-family: 'Outfit', system-ui, sans-serif;
-    font-weight: 600;
-    font-size: 0.9rem;
-    letter-spacing: 0.01em;
-    cursor: pointer;
-    transition: filter 0.2s, background-color 0.2s, color 0.2s;
-    background-color: var(--drop-zone-bg);
-    color: var(--text-color);
 }
 
 button:hover {
@@ -489,10 +475,54 @@ dialog input {
     width: 100%;
     padding: 0.8rem;
     margin: 1rem 0;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-color);
     border-radius: 8px;
     font-family: 'Outfit', system-ui, sans-serif;
     font-size: 0.95rem;
+    background: var(--card-bg);
+    color: var(--text-color);
+}
+
+dialog textarea {
+    width: 100%;
+    padding: 0.8rem;
+    margin: 0.5rem 0 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    resize: vertical;
+    font-family: 'Outfit', system-ui, sans-serif;
+    font-size: 0.9rem;
+    background: var(--card-bg);
+    color: var(--text-color);
+}
+
+dialog label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+#dlg-edit-link label {
+    margin: 0.75rem 0 0.25rem;
+}
+
+.dialog-field {
+    margin-bottom: 1rem;
+}
+
+.dialog-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.color-picker {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btn-full {
+    width: 100%;
 }
 
 .dialog-buttons {
@@ -503,12 +533,14 @@ dialog input {
 
 .hint {
     font-size: 0.9rem;
-    color: #888;
+    color: var(--secondary-text);
+    margin-bottom: 1rem;
 }
 
 /* Sync Dialog Styles */
 .sync-container {
-    text-align: center;
+    text-align: left;
+    max-width: 400px;
 }
 
 .sync-tabs {
@@ -557,14 +589,72 @@ dialog input {
 }
 
 .status-box {
-    margin-top: 1rem;
+    margin-bottom: 1rem;
     padding: 0.8rem;
-    background: #f0f8ff;
-    border: 1px solid #cce5ff;
+    background: var(--drop-zone-bg);
+    border: 1px solid var(--border-color);
     border-radius: 8px;
-    color: #004085;
+    color: var(--text-color);
     font-size: 0.9rem;
     width: 100%;
+}
+
+#remote-backups-container h4 {
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.25rem;
+}
+
+#remote-backups-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.backup-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+#dlg-restore-mode .dialog-inner {
+    max-width: 360px;
+}
+
+#dlg-restore-mode h3 {
+    margin-bottom: 0.75rem;
+}
+
+#dlg-restore-mode .dialog-intro {
+    margin-bottom: 1.25rem;
+    color: var(--secondary-text);
+    font-size: 0.9rem;
+}
+
+#dlg-restore-mode .dialog-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+}
+
+.btn-choice {
+    text-align: left;
+    padding: 0.75rem 1rem;
+}
+
+.btn-choice span {
+    font-size: 0.8rem;
+    font-weight: normal;
+}
+
+.color-custom-section {
+    border-top: 1px solid var(--border-color);
+    padding-top: 1rem;
 }
 
 /* Footer */
@@ -584,12 +674,6 @@ dialog input {
     letter-spacing: 0.04em;
     opacity: 0.6;
     margin-top: 0.5rem;
-}
-
-/* Dragging state for SortableJS */
-.sortable-ghost {
-    opacity: 0.4;
-    border: 2px dashed var(--accent-color);
 }
 
 /* Color Picker Styles */
