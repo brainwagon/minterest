@@ -259,6 +259,18 @@ async function flushAndRender() {
     renderContent();
 }
 
+async function mutateEntity(type, id, mutate) {
+    const storeName = type === 'topic' ? 'topics' : 'items';
+    const tx = storage.db.transaction([storeName], 'readwrite');
+    const store = tx.objectStore(storeName);
+    const entity = await store.get(id);
+    if (entity) {
+        mutate(entity);
+        await store.put(entity);
+    }
+    await tx.done;
+}
+
 // --- Navigation ---
 let currentTopicId = ""; // "" for Root
 let editingTopicId = null;
@@ -473,24 +485,14 @@ async function checkExpiration(node, type) {
     if (Date.now() > expiry) {
         console.log(`Node ${node.id} expired. Moving to Recycle Bin.`);
         
-        const tx = storage.db.transaction([type === 'topic' ? 'topics' : 'items'], 'readwrite');
-        const store = tx.objectStore(type === 'topic' ? 'topics' : 'items');
-        
-        const freshNode = await store.get(node.id);
-        if (freshNode) {
-            // Unset expiry
-            delete freshNode.expiresAt;
-            
-            // Move to bin
+        await mutateEntity(type, node.id, (e) => {
+            delete e.expiresAt;
             if (type === 'topic') {
-                freshNode.parentId = RECYCLE_BIN_ID;
+                e.parentId = RECYCLE_BIN_ID;
             } else {
-                freshNode.topicId = RECYCLE_BIN_ID;
+                e.topicId = RECYCLE_BIN_ID;
             }
-            
-            await store.put(freshNode);
-        }
-        await tx.done;
+        });
         return true;
     }
     return false;
@@ -2020,16 +2022,10 @@ dlgEditColor.onsubmit = async (e) => {
     const newColor = radio ? radio.value : picker.value;
 
     if (newColor) {
-        const tx = storage.db.transaction([currentEditTarget.type === 'topic' ? 'topics' : 'items'], 'readwrite');
-        const store = tx.objectStore(currentEditTarget.type === 'topic' ? 'topics' : 'items');
-        
-        const entity = await store.get(currentEditTarget.id);
-        if (entity) {
-            entity.color = newColor;
-            await store.put(entity);
-            await tx.done;
-            await flushAndRender();
-        }
+        await mutateEntity(currentEditTarget.type, currentEditTarget.id, (e) => {
+            e.color = newColor;
+        });
+        await flushAndRender();
     }
     currentEditTarget = null;
 };
@@ -2078,20 +2074,14 @@ dlgExpiration.onsubmit = async (e) => {
 };
 
 async function saveExpiration(isoDateString) {
-    const tx = storage.db.transaction([expirationTarget.type === 'topic' ? 'topics' : 'items'], 'readwrite');
-    const store = tx.objectStore(expirationTarget.type === 'topic' ? 'topics' : 'items');
-    
-    const entity = await store.get(expirationTarget.id);
-    if (entity) {
+    await mutateEntity(expirationTarget.type, expirationTarget.id, (e) => {
         if (isoDateString) {
-            entity.expiresAt = isoDateString;
+            e.expiresAt = isoDateString;
         } else {
-            delete entity.expiresAt;
+            delete e.expiresAt;
         }
-        await store.put(entity);
-        await tx.done;
-        await flushAndRender();
-    }
+    });
+    await flushAndRender();
 }
 
 // --- Remote Backup Logic ---
