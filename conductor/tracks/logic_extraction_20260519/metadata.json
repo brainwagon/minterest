@@ -1,0 +1,8 @@
+{
+  "track_id": "logic_extraction_20260519",
+  "type": "refactor",
+  "status": "awaiting_verification",
+  "created_at": "2026-05-19T00:00:00Z",
+  "updated_at": "2026-05-19T00:00:00Z",
+  "description": "Extract pure data-ops logic from app.js into a testable logic.js module and add a Node-based test suite with CI."
+}

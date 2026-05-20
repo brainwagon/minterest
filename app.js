@@ -1,5 +1,6 @@
 import { storage } from './storage.js';
 import { escapeHtml } from './utils.js';
+import { getNextOrder, collectDescendants, computeReorder, applyOrder, mergeData as mergeDataLogic } from './logic.js';
 import Peer from 'https://esm.sh/peerjs@1.5.4?bundle-deps';
 import QRCode from 'https://esm.sh/qrcode@1.5.3';
 import JSZip from 'https://esm.sh/jszip@3.10.1';
@@ -29,20 +30,24 @@ async function emptyRecycleBin() {
         return;
     }
 
-    const tx = storage.transaction(['topics', 'items'], 'readwrite');
-    
-    // 1. Delete all items in bin
-    const items = await tx.objectStore('items').index('topicId').getAllKeys(RECYCLE_BIN_ID);
-    await Promise.all(items.map(id => tx.objectStore('items').delete(id)));
-    
-    // 2. Delete all topics in bin and their entire descendant trees.
-    const binTopics = await tx.objectStore('topics').index('parentId').getAll(RECYCLE_BIN_ID);
-    for (const binTopic of binTopics) {
-        await deleteRecursive(binTopic.id, tx);
+    // 1. Delete all items directly in the bin (not inside a sub-topic of bin)
+    const allItems = await storage.getAllItems();
+    const binItemIds = allItems.filter(i => i.topicId === RECYCLE_BIN_ID).map(i => i.id);
+
+    // 2. Collect all topics in bin and their descendant trees.
+    const allTopics = await storage.getAllTopics();
+    const binTopicIds = allTopics.filter(t => t.parentId === RECYCLE_BIN_ID).map(t => t.id);
+
+    // Delete items directly in bin in their own transaction.
+    if (binItemIds.length > 0) {
+        const itemTx = storage.db.transaction('items', 'readwrite');
+        await Promise.all(binItemIds.map(id => itemTx.objectStore('items').delete(id)));
+        await itemTx.done;
     }
 
-    await tx.done;
-    
+    // Delete the topic subtrees.
+    await deleteSubtree(binTopicIds);
+
     await flushAndRender();
     updateView();
 }
@@ -718,46 +723,23 @@ async function moveToTopic(itemId, type, targetTopicId) {
 }
 
 async function reorderItem(draggedId, targetId, position) {
-    // 1. Get List of current items in view (sorted by order)
     const grid = document.getElementById('main-grid');
     const cards = Array.from(grid.querySelectorAll('.card'));
     const currentOrder = cards.map(c => c.dataset.id);
-    
-    // 2. Calculate new order
-    const fromIndex = currentOrder.indexOf(draggedId);
-    let toIndex = currentOrder.indexOf(targetId);
-    
-    if (position === 'after') toIndex++;
-    
-    // Adjust if moving downwards
-    if (fromIndex < toIndex) toIndex--;
-    
-    if (fromIndex === toIndex) return;
-    
-    // 3. Move in Array
-    const newOrderIds = [...currentOrder];
-    newOrderIds.splice(fromIndex, 1);
-    newOrderIds.splice(toIndex, 0, draggedId);
-    
-    // 4. Update DB Orders
+
+    const newOrderIds = computeReorder(currentOrder, draggedId, targetId, position);
+    if (!newOrderIds) return;
+
+    const { topicUpdates, itemUpdates } = applyOrder(newOrderIds, state.topics, state.items);
+    if (topicUpdates.length === 0 && itemUpdates.length === 0) {
+        await flushAndRender();
+        return;
+    }
+
     const tx = storage.db.transaction(['topics', 'items'], 'readwrite');
     const promises = [];
-    
-    newOrderIds.forEach((id, index) => {
-        // Find in state (fast)
-        let obj = state.topics.find(t => t.id === id);
-        let store = 'topics';
-        if (!obj) {
-            obj = state.items.find(i => i.id === id);
-            store = 'items';
-        }
-        
-        if (obj && obj.order !== index) {
-            obj.order = index;
-            promises.push(tx.objectStore(store).put(obj));
-        }
-    });
-    
+    for (const t of topicUpdates) promises.push(tx.objectStore('topics').put(t));
+    for (const i of itemUpdates) promises.push(tx.objectStore('items').put(i));
     await Promise.all(promises);
     await tx.done;
     await flushAndRender();
@@ -1103,16 +1085,9 @@ function getPastelColor(str) {
 }
 
 // --- Actions (Async) ---
-function getNextOrder(parentId) {
-    // Count both topics and items in this parent
-    const topics = state.topics.filter(t => (t.parentId || "") === (parentId || ""));
-    const items = state.items.filter(i => (i.topicId || "") === (parentId || ""));
-    return topics.length + items.length;
-}
-
 async function addNewTopic(name, color = null, description = '', parentId = "") {
     const id = crypto.randomUUID();
-    const order = getNextOrder(parentId);
+    const order = getNextOrder(parentId, state.topics, state.items);
     const topic = { id, name, order, description, parentId: parentId || "" };
     if (color) topic.color = color;
     
@@ -1140,14 +1115,23 @@ async function updateTopic(id, name, color, description) {
     }
 }
 
-async function deleteRecursive(topicId, tx) {
-    await tx.objectStore('topics').delete(topicId);
-    const items = await tx.objectStore('items').index('topicId').getAllKeys(topicId);
-    await Promise.all(items.map(id => tx.objectStore('items').delete(id)));
-    const subTopics = await tx.objectStore('topics').index('parentId').getAll(topicId);
-    for (const sub of subTopics) {
-        await deleteRecursive(sub.id, tx);
+async function deleteSubtree(topicIds) {
+    if (topicIds.length === 0) return;
+    const allTopics = await storage.getAllTopics();
+    const allItems = await storage.getAllItems();
+    const topicIdsToDelete = new Set();
+    const itemIdsToDelete = new Set();
+    for (const root of topicIds) {
+        const { topicIds: ts, itemIds: is } = collectDescendants(root, allTopics, allItems);
+        ts.forEach(id => topicIdsToDelete.add(id));
+        is.forEach(id => itemIdsToDelete.add(id));
     }
+    const tx = storage.db.transaction(['topics', 'items'], 'readwrite');
+    const promises = [];
+    for (const id of topicIdsToDelete) promises.push(tx.objectStore('topics').delete(id));
+    for (const id of itemIdsToDelete) promises.push(tx.objectStore('items').delete(id));
+    await Promise.all(promises);
+    await tx.done;
 }
 
 async function deleteTopic(id, forcePermanent = false) {
@@ -1179,11 +1163,7 @@ async function deleteTopic(id, forcePermanent = false) {
     }
 
     // Recursive delete
-    const tx = storage.db.transaction(['topics', 'items'], 'readwrite');
-
-    await deleteRecursive(id, tx);
-    
-    await tx.done;
+    await deleteSubtree([id]);
     await refreshState();
     
     // Navigation logic
@@ -1205,7 +1185,7 @@ async function deleteTopic(id, forcePermanent = false) {
 async function addItemToTopic(type, content, title = '', color = null, comment = '') {
     // currentTopicId can be null (Root)
     const id = crypto.randomUUID();
-    const order = getNextOrder(currentTopicId);
+    const order = getNextOrder(currentTopicId, state.topics, state.items);
     
     const item = { 
         id, 
@@ -1840,39 +1820,18 @@ async function replaceData(data) {
  * @param {Object} data - The data object containing topics and items arrays.
  */
 async function mergeData(data) {
+    const existingTopics = await storage.getAllTopics();
+    const existingItems = await storage.getAllItems();
+    const { topics, items } = mergeDataLogic(
+        { existingTopics, existingItems },
+        data,
+    );
+
     const tx = storage.db.transaction(['topics', 'items'], 'readwrite');
-
-    for (const t of data.topics) {
-        const { items: nestedItems, ...topicData } = t;
-        
-        // Sanitize parentId
-        if (topicData.parentId === null || topicData.parentId === undefined) {
-            topicData.parentId = "";
-        }
-        
-        // Process nested items if they exist
-        if (nestedItems && Array.isArray(nestedItems)) {
-            for (const ni of nestedItems) {
-                if (ni.topicId === null || ni.topicId === undefined) {
-                    ni.topicId = topicData.id;
-                }
-                await tx.objectStore('items').put(ni);
-            }
-        }
-        
-        // IDB 'put' overwrites. Let's use it to ensure we get the latest version from the sender.
-        // If we wanted "safe" merge, we'd use 'add' and ignore errors.
-        await tx.objectStore('topics').put(topicData);
-    }
-
-    for (const i of data.items) {
-        // Sanitize topicId
-        if (i.topicId === null || i.topicId === undefined) {
-            i.topicId = "";
-        }
-        await tx.objectStore('items').put(i);
-    }
-
+    const promises = [];
+    for (const t of topics) promises.push(tx.objectStore('topics').put(t));
+    for (const i of items) promises.push(tx.objectStore('items').put(i));
+    await Promise.all(promises);
     await tx.done;
 }
 // --- Init ---
